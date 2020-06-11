@@ -1,0 +1,6 @@
+[submodule "sort"]
+	path = sort
+	url = https://github.com/brianegge/sort
+[submodule "Deep-Stream-ONNX"]
+	path = Deep-Stream-ONNX
+	url = https://github.com/thatbrguy/Deep-Stream-ONNX.git

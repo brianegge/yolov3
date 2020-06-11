@@ -35,6 +35,11 @@ data/*
 !data/coco_*.txt
 !data/trainvalno5k.shapes
 !data/*.sh
+*.engine
+models/
+simplescan/capture
+streams/
+
 
 pycocotools/*
 results*.txt
@@ -200,6 +205,7 @@ Temporary Items
 .html  # Bokeh Plots
 .pg  # TensorFlow Frozen Graphs
 .avi # videos
+Deep-Stream-ONNX
 
 # Sensitive or high-churn files:
 .idea/**/dataSources/
