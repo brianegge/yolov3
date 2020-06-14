@@ -60,7 +60,6 @@ async def notify(message, image, predictions, config):
     print('center %d,%d' % (center_x,center_y),end=" ")
     left = min(max(0,center_x - width / 4), width / 2)
     top = min(max(0,center_y - height / 4), height / 2)
-    print('x,y %d,%d' % (left,top))
     crop_rectangle = (left, top, max(left + width / 2, right), max(top + height / 2, bottom))
     cropped_image = image.crop(crop_rectangle)
 

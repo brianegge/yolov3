@@ -59,6 +59,14 @@ def draw_bbox(image, p, color):
     draw.rectangle((rect_start, rect_end), outline = color, width=4)
     del draw
 
+def add_centers(predictions):
+    for p in predictions:
+        bbox = p['boundingBox']
+        p['center'] = {}
+        center = p['center']
+        center['x'] = bbox['left'] + bbox['width'] / 2.0
+        center['y'] = bbox['top'] + bbox['height'] / 2.0
+
 async def main(options):
     config = configparser.ConfigParser()
     config.read("config.txt")
@@ -84,54 +92,65 @@ async def main(options):
       start_time = timer()
       prediction_time = 0.0
       for cam in cams:
-        cam_name = cam['name']
-        print("Checking %s" % cam['name'])
-        if 'file' in cam:
-            raw_image = open(cam['file'], "rb").read()
-        elif 'user' in cam:
-            r = requests.get(cam['uri'], auth=HTTPDigestAuth(cam['user'], cam['password']))
-            raw_image = r.content
-        else:
-            r = requests.get(cam['uri'])
-            raw_image = r.content
         try:
-            image = Image.open(BytesIO(raw_image))
-            prediction_start = timer()
-            predictions = od_model.predict_image(image)
-            prediction_time += (timer() - prediction_start)
+          cam_name = cam['name']
+          print("Checking %s" % cam['name'])
+          if 'file' in cam:
+              raw_image = open(cam['file'], "rb").read()
+          elif 'user' in cam:
+              r = requests.get(cam['uri'], auth=HTTPDigestAuth(cam['user'], cam['password']))
+              raw_image = r.content
+          else:
+              r = requests.get(cam['uri'])
+              raw_image = r.content
+          try:
+              image = Image.open(BytesIO(raw_image))
+              prediction_start = timer()
+              predictions = od_model.predict_image(image)
+              prediction_time += (timer() - prediction_start)
+          except:
+              print("Unexpected error:", sys.exc_info()[0])
+              pprint(r)
+              print(r.status_code)
+              print(len(raw_image))
+              raise
+          # filter out lower predictions
+          predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
+          #  lots of false positives for dog
+          predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == 'dog'), predictions))
+          predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == 'cat'), predictions))
+          add_centers(predictions)
+          # remove road
+          if cam_name in ['west lawn','driveway']:
+              predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .16 and p['tagName'] == 'person'), predictions))
+          elif cam_name == 'garage':
+              predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
+          if len(predictions) == 0:
+              if len( cam_state.get( cam_name, []) ) > 0:
+                  print("  %s left %s" % (",".join(cam_state[cam['name']]), cam['name']))
+                  cam_state[cam['name']] = []
+              continue
+          for p in predictions:
+              p['camName'] = cam_name
+          pprint(predictions)
+          detected_objects = list(p['tagName'] for p in predictions)
+          current_objects = cam_state.get(cam['name'], "")
+          if detected_objects == current_objects:
+              print("  %s still near %s" % (",".join(current_objects), cam_name) )
+              continue
+          save_dir = os.path.join(SAVE_DIRECTORY,date.today().strftime("%Y%m%d"))
+          os.makedirs(save_dir,exist_ok=True)
+          basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam_name + "-" + "_".join(detected_objects))
+          image.save(basename + '.jpg')
+          with open(basename + '.txt', 'w') as file:
+              file.write(json.dumps(predictions))
+          for p in predictions:
+              draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
+          image.save(basename + '-annotated.jpg')
+          await notify("%s near %s" % (",".join(detected_objects),cam['name']), image, predictions, config)
+          cam_state[cam['name']] = detected_objects
         except:
-            print("Unexpected error:", sys.exc_info()[0])
-            pprint(r)
-            print(r.status_code)
-            print(len(raw_image))
-            continue
-        predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
-        # remove road
-        predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .16 and p['tagName'] == 'person'), predictions))
-        if len(predictions) == 0:
-            if len( cam_state.get( cam_name, []) ) > 0:
-                print("  %s left %s" % (",".join(cam_state[cam['name']]), cam['name']))
-                cam_state[cam['name']] = []
-            continue
-        for p in predictions:
-            p['camName'] = cam_name
-        pprint(predictions)
-        detected_objects = list(p['tagName'] for p in predictions)
-        current_objects = cam_state.get(cam['name'], "")
-        if detected_objects == current_objects:
-            print("  %s still near %s" % (",".join(current_objects), cam_name) )
-            continue
-        save_dir = os.path.join(SAVE_DIRECTORY,date.today().strftime("%Y%m%d"))
-        os.makedirs(save_dir,exist_ok=True)
-        basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam_name + "-" + "_".join(detected_objects))
-        image.save(basename + '.jpg')
-        with open(basename + '.txt', 'w') as file:
-            file.write(json.dumps(predictions))
-        for p in predictions:
-            draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
-        image.save(basename + '-annotated.jpg')
-        await notify("%s near %s" % (",".join(detected_objects),cam['name']), image, predictions, config)
-        cam_state[cam['name']] = detected_objects
+          print("Unexpected error:", sys.exc_info()[0])
       end_time = timer()
       print('Tour completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ) )
     
