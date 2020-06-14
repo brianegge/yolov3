@@ -18,9 +18,8 @@ def get_st_mode(config):
     r = requests.get('http://raspberrypi-zerow:8282/mode')
     return r.content.decode("utf-8").lower()
 
-async def notify(message, image, predictions, config):
+def notify(message, image, predictions, config):
     mode = get_st_mode(config)
-    print('Mode is %s' % mode)
     mode_key = 'priority-%s' % mode
     if mode_key in config:
         mode_priorities = config[mode_key]
@@ -47,7 +46,7 @@ async def notify(message, image, predictions, config):
                 priority = max(i, priority)
     if priority is None:
         priority = 0
-    print('Notifying "%s" with priority %d' % (message,priority) )
+    print('Notifying "%s" with priority %d, mode %s' % (message,priority, mode) )
 
     # crop to area of interest
     width, height = image.size
@@ -57,7 +56,6 @@ async def notify(message, image, predictions, config):
     bottom = max(p['boundingBox']['top'] + p['boundingBox']['height'] for p in predictions) * height
     center_x = left + (right - left) / 2
     center_y = top + (bottom - top) / 2
-    print('center %d,%d' % (center_x,center_y),end=" ")
     left = min(max(0,center_x - width / 4), width / 2)
     top = min(max(0,center_y - height / 4), height / 2)
     crop_rectangle = (left, top, max(left + width / 2, right), max(top + height / 2, bottom))
