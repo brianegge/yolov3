@@ -10,6 +10,7 @@ from timeit import default_timer as timer
 from detect import ONNXRuntimeObjectDetection,detect,Camera
 import asyncio
 import concurrent.futures
+from datetime import datetime
 
 async def main(options):
     config = configparser.ConfigParser()
@@ -34,7 +35,7 @@ async def main(options):
       start_time = timer()
       prediction_time = 0.0
       futures = []
-      print("Checking ", end="")
+      print("%s Checking " % datetime.now().strftime("%H:%M:%S"), end="")
       for cam in cams:
           #if cam.name != 'garage':
           #    continue
@@ -44,6 +45,8 @@ async def main(options):
       for f in futures:
           try:
               prediction_time += f.result()
+          except requests.exceptions.ConnectionError:
+              print("requests.exceptions.ConnectionError:", sys.exc_info()[0])
           except KeyboardInterrupt:
               return
           #except:

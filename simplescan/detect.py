@@ -84,7 +84,7 @@ def detect(cam, raw_image, od_model, config):
         predictions = od_model.predict_image(image)
         prediction_time = (timer() - prediction_start)
     except:
-        print("Unexpected error:", sys.exc_info()[0])
+        print("%s=error:" % cam.name, sys.exc_info()[0])
         return 0
     # filter out lower predictions
     predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
@@ -100,7 +100,7 @@ def detect(cam, raw_image, od_model, config):
         pprint(predictions)
     # remove road
     if cam.name in ['west lawn','driveway']:
-        predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .16 and p['tagName'] == 'person'), predictions))
+        predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
     elif cam.name == 'garage':
         predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
     if len(predictions) == 0:
