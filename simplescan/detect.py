@@ -45,17 +45,17 @@ class Camera():
         self.config = config
         self.objects = []
         self.is_file = False
-    def capture(self):
+    def capture(self, session):
           #pprint(r)
           #print(r.status_code)
         if 'file' in self.config:
             self.is_file = True
             return open(self.config['file'], "rb").read()
         elif 'user' in self.config:
-            r = requests.get(self.config['uri'], auth=HTTPDigestAuth(self.config['user'], self.config['password']))
+            r = session.get(self.config['uri'], auth=HTTPDigestAuth(self.config['user'], self.config['password']))
             return r.content
         else:
-            r = requests.get(self.config['uri'])
+            r = session.get(self.config['uri'])
             return r.content
     
 def draw_bbox(image, p, color):

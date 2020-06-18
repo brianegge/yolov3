@@ -11,6 +11,7 @@ from detect import ONNXRuntimeObjectDetection,detect,Camera
 import asyncio
 import concurrent.futures
 from datetime import datetime
+import requests
 
 async def main(options):
     config = configparser.ConfigParser()
@@ -30,6 +31,7 @@ async def main(options):
         i += 1
     print("Configured %i cams" % i)
     pool = concurrent.futures.ThreadPoolExecutor()
+    session = requests.Session()
     
     while True:
       start_time = timer()
@@ -39,7 +41,7 @@ async def main(options):
       for cam in cams:
           #if cam.name != 'garage':
           #    continue
-          raw_image = cam.capture()
+          raw_image = cam.capture(session)
           futures.append(pool.submit(detect, cam, raw_image, od_model, config))
 
       for f in futures:
