@@ -44,9 +44,6 @@ def notify(message, image, predictions, config):
                 priority = i
             else:
                 priority = max(i, priority)
-    if priority is None:
-        priority = 0
-    print('Notifying "%s" with priority %d, mode %s' % (message,priority, mode) )
 
     # crop to area of interest
     width, height = image.size
@@ -61,6 +58,13 @@ def notify(message, image, predictions, config):
     crop_rectangle = (left, top, max(left + width / 2, right), max(top + height / 2, bottom))
     cropped_image = image.crop(crop_rectangle)
 
+    if priority is None:
+        priority = 0
+    if priority <= -3:
+        print('Ignoring "%s" with priority %d, mode %s' % (message,priority, mode) )
+        return
+    else:
+        print('Notifying "%s" with priority %d, mode %s' % (message,priority, mode) )
     # prepare post
     output_bytes = BytesIO()
     cropped_image.save(output_bytes, 'jpeg')

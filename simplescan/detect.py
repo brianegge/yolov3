@@ -17,8 +17,8 @@ from datetime import date,datetime
 
 class ONNXRuntimeObjectDetection(ObjectDetection):
     """Object Detection class for ONNX Runtime"""
-    def __init__(self, model_filename, labels):
-        super(ONNXRuntimeObjectDetection, self).__init__(labels)
+    def __init__(self, model_filename, labels, prob_threshold=0.10):
+        super(ONNXRuntimeObjectDetection, self).__init__(labels, prob_threshold)
         model = onnx.load(model_filename)
         with tempfile.TemporaryDirectory() as dirpath:
             temp = os.path.join(dirpath, os.path.basename(model_filename))
@@ -26,6 +26,7 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
             model.graph.input[0].type.tensor_type.shape.dim[-2].dim_param = 'dim2'
             onnx.save(model, temp)
             self.session = onnxruntime.InferenceSession(temp)
+        #pprint(self.session.get_inputs()[0])
         self.input_name = self.session.get_inputs()[0].name
         self.is_fp16 = self.session.get_inputs()[0].type == 'tensor(float16)'
         
@@ -83,8 +84,9 @@ def detect(cam, raw_image, od_model, config):
         prediction_start = timer()
         predictions = od_model.predict_image(image)
         prediction_time = (timer() - prediction_start)
-    except:
+    except Exception as e:
         print("%s=error:" % cam.name, sys.exc_info()[0])
+        print(e)
         return 0
     # filter out lower predictions
     predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
@@ -99,13 +101,23 @@ def detect(cam, raw_image, od_model, config):
         print(cam.name, end="=")
         pprint(predictions)
     # remove road
-    if cam.name in ['west lawn','driveway']:
+    if cam.name in ['front lawn','driveway']:
         predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
     elif cam.name == 'garage':
         predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
+    elif cam.name == 'shed':
+        # flag pole on far right
+        predictions = list(filter(lambda p: not(p['center']['x'] > 0.949992365 and p['tagName'] == 'deer'), predictions))
+    elif cam.name == 'deck':
+        # flag pole 
+        predictions = list(filter(lambda p: not(p['center']['x'] < 0.24961317 and p['center']['y'] < 0.31184941), predictions))
+    save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
+    os.makedirs(save_dir,exist_ok=True)
     if len(predictions) == 0:
         if len( cam.objects ) > 0:
-            print("  %s left %s" % (",".join(cam.objects), cam.name))
+            print("  %s departed %s" % (",".join(cam.objects), cam.name))
+            basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "_departed")
+            image.save(basename + '.jpg')
             cam.objects.clear()
         return prediction_time
     for p in predictions:
@@ -116,8 +128,6 @@ def detect(cam, raw_image, od_model, config):
         return prediction_time
     # don't save file if we're reading from a file
     if not cam.is_file:
-        save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
-        os.makedirs(save_dir,exist_ok=True)
         basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
         image.save(basename + '.jpg')
         with open(basename + '.txt', 'w') as file:

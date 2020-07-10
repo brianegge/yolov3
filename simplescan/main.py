@@ -12,6 +12,7 @@ import asyncio
 import concurrent.futures
 from datetime import datetime
 import requests
+import faulthandler, signal
 
 async def main(options):
     config = configparser.ConfigParser()
@@ -22,7 +23,8 @@ async def main(options):
     with open(detector_config['labelfile-path'], 'r') as f:
         labels = [l.strip() for l in f.readlines()]
 
-    od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels)
+    od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
+    print("Loaded model")
    
     cams=[]
     i = 0
@@ -37,18 +39,19 @@ async def main(options):
       start_time = timer()
       prediction_time = 0.0
       futures = []
-      print("%s Checking " % datetime.now().strftime("%H:%M:%S"), end="")
+      print("Checking ", end="")
       for cam in cams:
           #if cam.name != 'garage':
           #    continue
-          raw_image = cam.capture(session)
-          futures.append(pool.submit(detect, cam, raw_image, od_model, config))
+          try:
+              raw_image = cam.capture(session)
+              futures.append(pool.submit(detect, cam, raw_image, od_model, config))
+          except requests.exceptions.ConnectionError:
+              print("requests.exceptions.ConnectionError:", sys.exc_info()[0])
 
       for f in futures:
           try:
-              prediction_time += f.result()
-          except requests.exceptions.ConnectionError:
-              print("requests.exceptions.ConnectionError:", sys.exc_info()[0])
+              prediction_time += f.result(timeout=60)
           except KeyboardInterrupt:
               return
           #except:
@@ -57,4 +60,5 @@ async def main(options):
       print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ) )
     
 if __name__ == '__main__':
+    faulthandler.register(signal.SIGUSR1)
     asyncio.run(main(sys.argv[1:]))
