@@ -27,16 +27,20 @@ def notify(message, image, predictions, config):
         mode_priorities = {}
     priorities = config['priority']
     priority = None
+    sound = 'pushover'
     for p in predictions:
-        if p['tagName'] in mode_priorities:
+        tagName = p['tagName']
+        if tagName in mode_priorities:
             i = mode_priorities.getint(p['tagName'])
             print('mode priority %s=%d' % (mode_key,i))
-        elif p['tagName'] in priorities:
+        elif tagName in priorities:
             i = priorities.getint(p['tagName'])
             print('config priority=%d' % i)
         else:
             print('default priority for %s' % p['tagName'])
             i = None
+        if tagName in config['sounds']:
+            sound = config['sounds'][tagName]
         if i is not None:
             if p['tagName'] == 'dog' and p['camName'] == 'garage':
                 priority = 1
@@ -53,9 +57,18 @@ def notify(message, image, predictions, config):
     bottom = max(p['boundingBox']['top'] + p['boundingBox']['height'] for p in predictions) * height
     center_x = left + (right - left) / 2
     center_y = top + (bottom - top) / 2
-    left = min(max(0,center_x - width / 4), width / 2)
-    top = min(max(0,center_y - height / 4), height / 2)
-    crop_rectangle = (left, top, max(left + width / 2, right), max(top + height / 2, bottom))
+    show_width = max(width / 4, right - left)
+    show_height = max(height / 4, bottom - top)
+    left = min(left, center_x - show_width / 2)
+    left = max(0,left)
+    top = max(0,top)
+    if left + show_width > width:
+        left = width - show_width
+    if top + show_height > height:
+        top = height - show_height
+    top = min(top, center_y - show_height / 2)
+    crop_rectangle = (left, top, left + show_width, top + show_height)
+    print("Cropping to %d,%d,%d,%d" % crop_rectangle)
     cropped_image = image.crop(crop_rectangle)
 
     if priority is None:
@@ -73,7 +86,8 @@ def notify(message, image, predictions, config):
       "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
       "user": "uzziquh6d7a4vyouise2ti482gc1pq",
       "message": message,
-      "priority": priority
+      "priority": priority,
+      "sound": sound
     },
     files = {
       "attachment": ("image.jpg", output_bytes, "image/jpeg")

@@ -2,6 +2,7 @@ import os
 import sys
 from io import BytesIO
 from object_detection import ObjectDetection
+from utils import bb_intersection_over_union
 import onnxruntime
 import onnx
 import numpy as np
@@ -45,7 +46,10 @@ class Camera():
         self.name = config['name']
         self.config = config
         self.objects = []
+        self.prev_predictions = {}
         self.is_file = False
+        self.webcore = config.get('webcore',None)
+
     def capture(self, session):
           #pprint(r)
           #print(r.status_code)
@@ -103,14 +107,14 @@ def detect(cam, raw_image, od_model, config):
     # remove road
     if cam.name in ['front lawn','driveway']:
         predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
-    elif cam.name == 'garage':
-        predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
+    #elif cam.name == 'garage':
+    #    predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
     elif cam.name == 'shed':
         # flag pole on far right
-        predictions = list(filter(lambda p: not(p['center']['x'] > 0.949992365 and p['tagName'] == 'deer'), predictions))
+        predictions = list(filter(lambda p: not(p['center']['x'] > 0.94397842 and p['center']['y'] < 0.393102315), predictions))
     elif cam.name == 'deck':
         # flag pole 
-        predictions = list(filter(lambda p: not(p['center']['x'] < 0.24961317 and p['center']['y'] < 0.31184941), predictions))
+        predictions = list(filter(lambda p: not(p['center']['x'] < 0.294090525 and p['center']['y'] < 0.312176735), predictions))
     save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
     os.makedirs(save_dir,exist_ok=True)
     if len(predictions) == 0:
@@ -125,7 +129,12 @@ def detect(cam, raw_image, od_model, config):
     detected_objects = list(p['tagName'] for p in predictions)
     if detected_objects == cam.objects:
         print("  %s still near %s" % (",".join(cam.objects), cam.name) )
-        return prediction_time
+    if cam.webcore and 'cat' in detected_objects:
+        r = requests.get(cam.webcore)
+        if r.json()['result'] != "OK":
+            print("Failed to crack open garage door for cat")
+            print(r.text)
+    #    return prediction_time
     # don't save file if we're reading from a file
     if not cam.is_file:
         basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
@@ -136,6 +145,26 @@ def detect(cam, raw_image, od_model, config):
         for p in predictions:
             draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
         image.save(basename + '-annotated.jpg')
-    notify("%s near %s" % (",".join(detected_objects),cam.name), image, predictions, config)
+    # check if this class has been reported for this location today
+    uniq_predictions = []
+    for p in predictions:
+        prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
+        skip = False
+        for prev_box in prev_class:
+            iou = bb_intersection_over_union(prev_box,p['boundingBox'])
+            if iou > 0:
+                print("IOU %s=%.3f" % (p['tagName'],iou), prev_box)
+            if iou > 0.5:
+                print("Already notified %s with iou %f" % (p['tagName'], iou))
+                skip = True
+                break
+        if not skip:
+            prev_class.append(p['boundingBox'])
+            uniq_predictions.append(p)
+
+    predictions = uniq_predictions
+    detected_objects = list(p['tagName'] for p in predictions)
+    if len(detected_objects):
+        notify("%s near %s" % (",".join(detected_objects),cam.name), image, predictions, config)
     cam.objects = detected_objects
     return prediction_time

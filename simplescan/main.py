@@ -47,7 +47,7 @@ async def main(options):
               raw_image = cam.capture(session)
               futures.append(pool.submit(detect, cam, raw_image, od_model, config))
           except requests.exceptions.ConnectionError:
-              print("requests.exceptions.ConnectionError:", sys.exc_info()[0])
+              print("cam:%s requests.exceptions.ConnectionError:" % cam.name, sys.exc_info()[0] )
 
       for f in futures:
           try:
