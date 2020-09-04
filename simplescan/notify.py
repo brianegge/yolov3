@@ -3,7 +3,6 @@ from pprint import pprint
 from io import BytesIO
 import aiohttp
 import json
-import jsonpickle
 import sys
 sys.path.insert(0,'/home/egge/detector/simplescan/pysmartthings/pysmartthings')
 import pysmartthings
@@ -15,7 +14,7 @@ import pysmartthings
 def get_st_mode(config):
     st_config = config['smartthings']
     token = st_config['token']
-    r = requests.get('http://raspberrypi-zerow:8282/mode')
+    r = requests.get('http://raspberrypi-zerow.local:8282/mode')
     return r.content.decode("utf-8").lower()
 
 def notify(message, image, predictions, config):
@@ -67,6 +66,7 @@ def notify(message, image, predictions, config):
     if top + show_height > height:
         top = height - show_height
     top = min(top, center_y - show_height / 2)
+    top = max(0,top)
     crop_rectangle = (left, top, left + show_width, top + show_height)
     print("Cropping to %d,%d,%d,%d" % crop_rectangle)
     cropped_image = image.crop(crop_rectangle)

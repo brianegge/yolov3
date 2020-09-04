@@ -5,6 +5,7 @@
 # (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
 import numpy as np
 import math
+from pprint import pprint
 
 
 class ObjectDetection(object):

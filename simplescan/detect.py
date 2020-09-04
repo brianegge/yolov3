@@ -13,8 +13,10 @@ from PIL import Image, ImageDraw
 from timeit import default_timer as timer
 import requests
 from requests.auth import HTTPDigestAuth
-from notify import notify
+from notify import notify, get_st_mode
 from datetime import date,datetime
+from PIL import UnidentifiedImageError
+import traceback
 
 class ONNXRuntimeObjectDetection(ObjectDetection):
     """Object Detection class for ONNX Runtime"""
@@ -27,7 +29,7 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
             model.graph.input[0].type.tensor_type.shape.dim[-2].dim_param = 'dim2'
             onnx.save(model, temp)
             self.session = onnxruntime.InferenceSession(temp)
-        #pprint(self.session.get_inputs()[0])
+        pprint(self.session.get_inputs()[0])
         self.input_name = self.session.get_inputs()[0].name
         self.is_fp16 = self.session.get_inputs()[0].type == 'tensor(float16)'
         
@@ -38,6 +40,7 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
         if self.is_fp16:
             inputs = inputs.astype(np.float16)
 
+        pprint(inputs.shape)
         outputs = self.session.run(None, {self.input_name: inputs})
         return np.squeeze(outputs).transpose((1,2,0)).astype(np.float32)
 
@@ -48,7 +51,7 @@ class Camera():
         self.objects = []
         self.prev_predictions = {}
         self.is_file = False
-        self.webcore = config.get('webcore',None)
+        self.last_st_mode = None
 
     def capture(self, session):
           #pprint(r)
@@ -83,15 +86,25 @@ def add_centers(predictions):
 
 def detect(cam, raw_image, od_model, config):
     threshold = config['detector'].getfloat('threshold')
-    try:
-        image = Image.open(BytesIO(raw_image))
-        prediction_start = timer()
-        predictions = od_model.predict_image(image)
-        prediction_time = (timer() - prediction_start)
-    except Exception as e:
-        print("%s=error:" % cam.name, sys.exc_info()[0])
-        print(e)
+    smartthings = config['smartthings']
+    image = None
+    for _ in range(2):
+        try:
+            image = Image.open(BytesIO(raw_image))
+        except UnidentifiedImageError as e:
+            print("%s=error:" % cam.name, sys.exc_info()[0])
+            #track = traceback.format_exc()
+            #print(e)
+            #print(track)
+            continue
+        else:
+            break
+    if image == None:
+        print("Can't capture %s camera" % cam.name)
         return 0
+    prediction_start = timer()
+    predictions = od_model.predict_image(image)
+    prediction_time = (timer() - prediction_start)
     # filter out lower predictions
     predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
     #  lots of false positives for dog
@@ -111,16 +124,16 @@ def detect(cam, raw_image, od_model, config):
     #    predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
     elif cam.name == 'shed':
         # flag pole on far right
-        predictions = list(filter(lambda p: not(p['center']['x'] > 0.94397842 and p['center']['y'] < 0.393102315), predictions))
+        predictions = list(filter(lambda p: not(p['center']['x'] > 0.93 and p['center']['y'] < 0.396021495), predictions))
     elif cam.name == 'deck':
         # flag pole 
-        predictions = list(filter(lambda p: not(p['center']['x'] < 0.294090525 and p['center']['y'] < 0.312176735), predictions))
+        predictions = list(filter(lambda p: not(p['center']['x'] < 0.3031482 and p['center']['y'] < 0.28), predictions))
     save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
     os.makedirs(save_dir,exist_ok=True)
     if len(predictions) == 0:
         if len( cam.objects ) > 0:
             print("  %s departed %s" % (",".join(cam.objects), cam.name))
-            basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "_departed")
+            basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
             image.save(basename + '.jpg')
             cam.objects.clear()
         return prediction_time
@@ -129,11 +142,15 @@ def detect(cam, raw_image, od_model, config):
     detected_objects = list(p['tagName'] for p in predictions)
     if detected_objects == cam.objects:
         print("  %s still near %s" % (",".join(cam.objects), cam.name) )
-    if cam.webcore and 'cat' in detected_objects:
-        r = requests.get(cam.webcore)
-        if r.json()['result'] != "OK":
-            print("Failed to crack open garage door for cat")
-            print(r.text)
+    # Always open garage door, we can call this many times
+    if smartthings:
+        if 'cat' in detected_objects:
+            print("Cracking open garage door for cat")
+            r = requests.get(smartthings['crack_garage'])
+            if r.json()['result'] != "OK":
+                print("Failed to crack open garage door for cat")
+                print(r.text)
+
     #    return prediction_time
     # don't save file if we're reading from a file
     if not cam.is_file:
@@ -146,6 +163,13 @@ def detect(cam, raw_image, od_model, config):
             draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
         image.save(basename + '-annotated.jpg')
     # check if this class has been reported for this location today
+    st_mode = get_st_mode(config)
+    # clear out any prior predictions when mode changes
+    if cam.last_st_mode != st_mode:
+        cam.last_st_mode = st_mode
+        if bool(cam.prev_predictions):
+            print("Clearing out previous predictons for cam %s now that we are in mode %s" % (cam.name, st_mode))
+        cam.prev_predictions = {}
     uniq_predictions = []
     for p in predictions:
         prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
@@ -164,6 +188,16 @@ def detect(cam, raw_image, od_model, config):
 
     predictions = uniq_predictions
     detected_objects = list(p['tagName'] for p in predictions)
+
+    # Only notify deer if not seen
+    if smartthings:
+        if 'deer' in detected_objects:
+            print("Deer alert!")
+            r = requests.get(smartthings['deer_alert'])
+            if r.json()['result'] != "OK":
+                print("Failed to crack open garage door for cat")
+                print(r.text)
+
     if len(detected_objects):
         notify("%s near %s" % (",".join(detected_objects),cam.name), image, predictions, config)
     cam.objects = detected_objects
