@@ -56,8 +56,8 @@ async def main(options):
       for cam in cams:
           try:
               raw_image = cam.capture(session)
-              if '--sync' in options:
-                  detect(cam, raw_image, od_model, config)
+              if options.sync:
+                  prediction_time += detect(cam, raw_image, od_model, vehicle_model, config)
               else:
                   futures.append(pool.submit(detect, cam, raw_image, od_model, vehicle_model, config))
           except requests.exceptions.ConnectionError:
@@ -77,7 +77,8 @@ if __name__ == '__main__':
     faulthandler.register(signal.SIGUSR1)
     # python 3.7 is asyncio.run()
     parser = argparse.ArgumentParser(description='Process cameras')
-    parser.add_argument('--trt', action='store_true') 
+    parser.add_argument('--trt', action='store_true')
+    parser.add_argument('--sync', action='store_true')
     parser.add_argument('config_file', nargs='?', default='config.txt')
     args = parser.parse_args()
     asyncio.get_event_loop().run_until_complete(main(args))
