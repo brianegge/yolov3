@@ -24,12 +24,20 @@ async def main(options):
     # Load labels
     with open(detector_config['labelfile-path'], 'r') as f:
         labels = [l.strip() for l in f.readlines()]
+    if 'vehicle-labelfile-path' in detector_config:
+        with open(detector_config['vehicle-labelfile-path'], 'r') as f:
+            vehicle_labels = [l.strip() for l in f.readlines()]
 
+    vehicle_model = None
     if options.trt:
         od_model = ONNXTensorRTObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
+        if 'vehicle-model' in detector_config:
+            vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10))
     else:
         od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
-    print("Loaded model")
+        if 'vehicle-model' in detector_config:
+            vehicle_model = ONNXRuntimeObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10))
+    print("Loaded models")
    
     cams=[]
     i = 0
@@ -46,20 +54,18 @@ async def main(options):
       futures = []
       print("Checking ", end="")
       for cam in cams:
-          #if cam.name != 'garage':
-          #    continue
           try:
               raw_image = cam.capture(session)
               if '--sync' in options:
                   detect(cam, raw_image, od_model, config)
               else:
-                  futures.append(pool.submit(detect, cam, raw_image, od_model, config))
+                  futures.append(pool.submit(detect, cam, raw_image, od_model, vehicle_model, config))
           except requests.exceptions.ConnectionError:
               print("cam:%s requests.exceptions.ConnectionError:" % cam.name, sys.exc_info()[0] )
 
       for f in futures:
           try:
-              prediction_time += f.result(timeout=60)
+              prediction_time += f.result(timeout=90)
           except KeyboardInterrupt:
               return
           #except:
@@ -72,6 +78,6 @@ if __name__ == '__main__':
     # python 3.7 is asyncio.run()
     parser = argparse.ArgumentParser(description='Process cameras')
     parser.add_argument('--trt', action='store_true') 
-    parser.add_argument('config_file', default='config.txt')
+    parser.add_argument('config_file', nargs='?', default='config.txt')
     args = parser.parse_args()
     asyncio.get_event_loop().run_until_complete(main(args))

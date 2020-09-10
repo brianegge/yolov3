@@ -14,7 +14,7 @@ from timeit import default_timer as timer
 import requests
 from requests.auth import HTTPDigestAuth
 from notify import notify, get_st_mode
-from datetime import date,datetime
+from datetime import date,datetime,timedelta
 from PIL import UnidentifiedImageError
 import traceback
 
@@ -29,7 +29,6 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
             model.graph.input[0].type.tensor_type.shape.dim[-2].dim_param = 'dim2'
             onnx.save(model, temp)
             self.session = onnxruntime.InferenceSession(temp)
-        pprint(self.session.get_inputs()[0])
         self.input_name = self.session.get_inputs()[0].name
         self.is_fp16 = self.session.get_inputs()[0].type == 'tensor(float16)'
         
@@ -40,7 +39,6 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
         if self.is_fp16:
             inputs = inputs.astype(np.float16)
 
-        pprint(inputs.shape)
         outputs = self.session.run(None, {self.input_name: inputs})
         return np.squeeze(outputs).transpose((1,2,0)).astype(np.float32)
 
@@ -52,10 +50,9 @@ class Camera():
         self.prev_predictions = {}
         self.is_file = False
         self.last_st_mode = None
+        self.vehicle_check = config.getboolean('vehicle_check', False)
 
     def capture(self, session):
-          #pprint(r)
-          #print(r.status_code)
         if 'file' in self.config:
             self.is_file = True
             return open(self.config['file'], "rb").read()
@@ -84,7 +81,7 @@ def add_centers(predictions):
         center['x'] = bbox['left'] + bbox['width'] / 2.0
         center['y'] = bbox['top'] + bbox['height'] / 2.0
 
-def detect(cam, raw_image, od_model, config):
+def detect(cam, raw_image, od_model, vehicle_model, config):
     threshold = config['detector'].getfloat('threshold')
     smartthings = config['smartthings']
     image = None
@@ -104,6 +101,8 @@ def detect(cam, raw_image, od_model, config):
         return 0
     prediction_start = timer()
     predictions = od_model.predict_image(image)
+    if cam.vehicle_check:
+        predictions += vehicle_model.predict_image(image)
     prediction_time = (timer() - prediction_start)
     # filter out lower predictions
     predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
@@ -120,8 +119,6 @@ def detect(cam, raw_image, od_model, config):
     # remove road
     if cam.name in ['front lawn','driveway']:
         predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
-    #elif cam.name == 'garage':
-    #    predictions = list(filter(lambda p: not(p['boundingBox']['top'] < .03 and p['tagName'] == 'dog'), predictions))
     elif cam.name == 'shed':
         # flag pole on far right
         predictions = list(filter(lambda p: not(p['center']['x'] > 0.93 and p['center']['y'] < 0.396021495), predictions))
@@ -152,16 +149,7 @@ def detect(cam, raw_image, od_model, config):
                 print(r.text)
 
     #    return prediction_time
-    # don't save file if we're reading from a file
-    if not cam.is_file:
-        basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
-        image.save(basename + '.jpg')
-        with open(basename + '.txt', 'w') as file:
-            file.write(json.dumps(predictions))
-        colors = config['colors']
-        for p in predictions:
-            draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
-        image.save(basename + '-annotated.jpg')
+    colors = config['colors']
     # check if this class has been reported for this location today
     st_mode = get_st_mode(config)
     # clear out any prior predictions when mode changes
@@ -173,6 +161,12 @@ def detect(cam, raw_image, od_model, config):
     uniq_predictions = []
     for p in predictions:
         prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
+        prev_time = cam.prev_predictions.get(p['tagName'] + "-time", datetime.utcfromtimestamp(0))
+        if datetime.now() - prev_time > timedelta(minutes=15) and len(prev_class) > 0: # clear if we haven't seen this class in 15 minutes on this camera
+            cam.prev_predictions[p['tagName']] = []
+            prev_class.clear()
+            print('Cleared previous predictions for %s on %s' % (p['tagName'], cam.name))
+        cam.prev_predictions[p['tagName'] + '-time'] = datetime.now()
         skip = False
         for prev_box in prev_class:
             iou = bb_intersection_over_union(prev_box,p['boundingBox'])
@@ -185,6 +179,18 @@ def detect(cam, raw_image, od_model, config):
         if not skip:
             prev_class.append(p['boundingBox'])
             uniq_predictions.append(p)
+
+    if len(uniq_predictions):
+        # don't save file if we're reading from a file
+        if not cam.is_file:
+            basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
+            image.save(basename + '.jpg')
+            with open(basename + '.txt', 'w') as file:
+                file.write(json.dumps(predictions))
+        for p in predictions:
+            draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
+        if not cam.is_file:
+            image.save(basename + '-annotated.jpg')
 
     predictions = uniq_predictions
     detected_objects = list(p['tagName'] for p in predictions)
@@ -200,5 +206,6 @@ def detect(cam, raw_image, od_model, config):
 
     if len(detected_objects):
         notify("%s near %s" % (",".join(detected_objects),cam.name), image, predictions, config)
+
     cam.objects = detected_objects
     return prediction_time

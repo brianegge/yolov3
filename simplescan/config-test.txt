@@ -1,6 +1,8 @@
 [detector]
 onnx-file=model32.onnx
 labelfile-path=labels.txt
+vehicle-model=vehicle-model.onnx
+vehicle-labelfile-path=vehicle-labels.txt
 prob_threshold=0.10
 threshold=0.8
 save-path=/mnt/elements/capture/
@@ -10,11 +12,13 @@ dog=yellow
 cat=orange
 person=cyan
 raccoon=brown
+vehicle=violet
 
 [cam0]
-file=capture/20200904/133728-deck-dog.jpg 
+file=capture/vehicles/civic.jpg
 #uri=http://192.168.254.2:8085/?action=snapshot
-name=deck
+name=shed
+vehicle_check=true
 
 # default priority
 [priority]
@@ -24,6 +28,7 @@ dog=-2
 fox=1
 person=0
 raccoon=0
+vehicle=0
 
 # mode specific priorities override default priority
 [priority-home]

@@ -3,13 +3,21 @@ from pprint import pprint
 from io import BytesIO
 import aiohttp
 import json
+import traceback
+from datetime import date,datetime
 import sys
+import os
 sys.path.insert(0,'/home/egge/detector/simplescan/pysmartthings/pysmartthings')
 import pysmartthings
+import sighthound
 #import logging
 
 #logging.basicConfig(level=logging.DEBUG)
 
+friendly_plates = {
+        '247VXP' : 'Karly\'s CR-V',
+        'AT34047' : 'Brian\'s Civic'
+}
 
 def get_st_mode(config):
     st_config = config['smartthings']
@@ -26,9 +34,15 @@ def notify(message, image, predictions, config):
         mode_priorities = {}
     priorities = config['priority']
     priority = None
+    has_package = False
+    has_dog = False
     sound = 'pushover'
     for p in predictions:
         tagName = p['tagName']
+        if tagName == 'dog':
+            has_dog = True
+        elif tagName == 'package':
+            has_package = True
         if tagName in mode_priorities:
             i = mode_priorities.getint(p['tagName'])
             print('mode priority %s=%d' % (mode_key,i))
@@ -47,6 +61,9 @@ def notify(message, image, predictions, config):
                 priority = i
             else:
                 priority = max(i, priority)
+    # raise priority if dog is near package
+    if has_package and has_dog:
+        priority = max(1, priority)
 
     # crop to area of interest
     width, height = image.size
@@ -62,9 +79,9 @@ def notify(message, image, predictions, config):
     left = max(0,left)
     top = max(0,top)
     if left + show_width > width:
-        left = width - show_width
+        show_width = width - left
     if top + show_height > height:
-        top = height - show_height
+        show_height = height - top
     top = min(top, center_y - show_height / 2)
     top = max(0,top)
     crop_rectangle = (left, top, left + show_width, top + show_height)
@@ -82,15 +99,32 @@ def notify(message, image, predictions, config):
     output_bytes = BytesIO()
     cropped_image.save(output_bytes, 'jpeg')
     output_bytes.seek(0)
+    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle', predictions))
+    if len(vehicles):
+        try:
+            save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
+            save_json = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + vehicles[0]['camName'] + "-" + "sighthound.txt")
+            enrichments = sighthound.enrich(output_bytes.read(), save_json)
+            if len(enrichments['message']) > 0:
+                message = enrichments['message']
+            for plate in enrichments['plates']:
+                if plate in friendly_plates and priority <= 0:
+                    print('Ignoring friendly vehicle {}'.format(friendly_plates[plate]))
+                    return
+        except:
+            traceback.print_exc(file=sys.stdout)
+            print('Failed to enrich via sighthound')
+        output_bytes.seek(0)
+
     r = requests.post("https://api.pushover.net/1/messages.json", data = {
       "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
       "user": "uzziquh6d7a4vyouise2ti482gc1pq",
       "message": message,
       "priority": priority,
       "sound": sound
-    },
-    files = {
-      "attachment": ("image.jpg", output_bytes, "image/jpeg")
+      },
+      files = {
+          "attachment": ("image.jpg", output_bytes, "image/jpeg")
     })
     if r.status_code != 200:
         pprint(r)

@@ -1,6 +1,8 @@
 [detector]
 onnx-file=model32.onnx
 labelfile-path=labels.txt
+vehicle-model=vehicle-model.onnx
+vehicle-labelfile-path=vehicle-labels.txt
 prob_threshold=0.10
 threshold=0.9
 save-path=/mnt/elements/capture/
@@ -10,14 +12,16 @@ dog=yellow
 cat=orange
 person=cyan
 raccoon=brown
+vehicle=violet
 
 [cam0]
 uri=http://192.168.254.2:8085/?action=snapshot
 name=garage
 
 [cam1]
-uri=http://192.168.254.5/cgi-bin/snapshot.cgi?channel=1
-name=west lawn
+uri=http://192.168.254.5/cgi-bin/snapshot.cgi?channel=7
+name=shed
+vehicle_check=true
 user=admin
 password=grjkz6jz
 
@@ -52,8 +56,8 @@ user=admin
 password=grjkz6jz
 
 [cam7]
-uri=http://192.168.254.5/cgi-bin/snapshot.cgi?channel=7
-name=shed
+uri=http://192.168.254.5/cgi-bin/snapshot.cgi?channel=1
+name=west lawn
 user=admin
 password=grjkz6jz
 
@@ -71,6 +75,7 @@ dog=-2
 fox=1
 person=0
 raccoon=0
+vehicle=0
 
 # mode specific priorities override default priority
 [priority-home]
