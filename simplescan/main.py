@@ -3,6 +3,7 @@
 # 2. resize network input size to (w', h')
 # 3. pass the image to network and do inference
 # (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
+# scale is a multiplier of the default model size
 import os
 import sys
 import configparser
@@ -30,13 +31,13 @@ async def main(options):
 
     vehicle_model = None
     if options.trt:
-        od_model = ONNXTensorRTObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
+        od_model = ONNXTensorRTObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
         if 'vehicle-model' in detector_config:
-            vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10))
+            vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
     else:
-        od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
+        od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
         if 'vehicle-model' in detector_config:
-            vehicle_model = ONNXRuntimeObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10))
+            vehicle_model = ONNXRuntimeObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
     print("Loaded models")
    
     cams=[]

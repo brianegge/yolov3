@@ -20,8 +20,8 @@ import traceback
 
 class ONNXRuntimeObjectDetection(ObjectDetection):
     """Object Detection class for ONNX Runtime"""
-    def __init__(self, model_filename, labels, prob_threshold=0.10):
-        super(ONNXRuntimeObjectDetection, self).__init__(labels, prob_threshold)
+    def __init__(self, model_filename, labels, prob_threshold=0.10, scale=4):
+        super(ONNXRuntimeObjectDetection, self).__init__(labels, prob_threshold=prob_threshold, scale=scale)
         model = onnx.load(model_filename)
         with tempfile.TemporaryDirectory() as dirpath:
             temp = os.path.join(dirpath, os.path.basename(model_filename))
@@ -35,11 +35,13 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
     def predict(self, preprocessed_image):
         inputs = np.array(preprocessed_image, dtype=np.float32)[np.newaxis,:,:,(2,1,0)] # RGB -> BGR
         inputs = np.ascontiguousarray(np.rollaxis(inputs, 3, 1))
+        print("ONNXRuntimeObjectDetection input shape")
 
         if self.is_fp16:
             inputs = inputs.astype(np.float16)
 
         outputs = self.session.run(None, {self.input_name: inputs})
+        print("ONNXRuntimeObjectDetection output shape {}".format(outputs[0].shape))
         return np.squeeze(outputs).transpose((1,2,0)).astype(np.float32)
 
 class Camera():
@@ -101,11 +103,15 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
         return 0
     prediction_start = timer()
     predictions = od_model.predict_image(image)
+    vehicle_predictions = []
     if cam.vehicle_check:
-        predictions += vehicle_model.predict_image(image)
+        vehicle_predictions = vehicle_model.predict_image(image)
+        vehicle_predictions = list(filter(lambda p: p['probability'] > 0.5, vehicle_predictions))
     prediction_time = (timer() - prediction_start)
     # filter out lower predictions
     predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
+    # include all vehicle predictions for now
+    predictions += vehicle_predictions
     #  lots of false positives for dog
     predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == 'dog'), predictions))
     predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == 'cat'), predictions))

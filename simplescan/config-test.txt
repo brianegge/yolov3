@@ -15,7 +15,8 @@ raccoon=brown
 vehicle=violet
 
 [cam0]
-file=capture/vehicles/civic.jpg
+#file=capture/20200910/160141-shed-dog.jpg
+file=capture/vehicles/civic2.jpg
 #uri=http://192.168.254.2:8085/?action=snapshot
 name=shed
 vehicle_check=true
@@ -45,3 +46,4 @@ deer=siren
 
 [smartthings]
 token=c385898c-c65f-4d0f-a897-6438618cbcea
+echo_speaks=https://graph-na04-useast2.api.smartthings.com/api/token/0f145ac7-a135-48ad-969d-a7287bd38a26/smartapps/installations/0aea3b0d-96de-461c-99a8-ef53a3fb6384/execute/:c8373a10915b6c0f744d047256705be9:?a=

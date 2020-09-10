@@ -94,3 +94,4 @@ deer=siren
 token=c385898c-c65f-4d0f-a897-6438618cbcea
 crack_garage=https://graph-na04-useast2.api.smartthings.com/api/token/0f145ac7-a135-48ad-969d-a7287bd38a26/smartapps/installations/0aea3b0d-96de-461c-99a8-ef53a3fb6384/execute/:96d612952b7277f21dff3420646f85d0:
 deer_alert=https://graph-na04-useast2.api.smartthings.com/api/token/0f145ac7-a135-48ad-969d-a7287bd38a26/smartapps/installations/0aea3b0d-96de-461c-99a8-ef53a3fb6384/execute/:f1506a765c6399f7179179e9a57530c8:
+echo_speaks=https://graph-na04-useast2.api.smartthings.com/api/token/0f145ac7-a135-48ad-969d-a7287bd38a26/smartapps/installations/0aea3b0d-96de-461c-99a8-ef53a3fb6384/execute/:c8373a10915b6c0f744d047256705be9:?a=

@@ -10,6 +10,7 @@ import os
 sys.path.insert(0,'/home/egge/detector/simplescan/pysmartthings/pysmartthings')
 import pysmartthings
 import sighthound
+from urllib.parse import quote
 #import logging
 
 #logging.basicConfig(level=logging.DEBUG)
@@ -24,6 +25,12 @@ def get_st_mode(config):
     token = st_config['token']
     r = requests.get('http://raspberrypi-zerow.local:8282/mode')
     return r.content.decode("utf-8").lower()
+
+def echo_speaks(config, message):
+    st_config = config['smartthings']
+    if 'echo_speaks' in st_config:
+        url = st_config['echo_speaks']
+        requests.get(url + quote(message))
 
 def notify(message, image, predictions, config):
     mode = get_st_mode(config)
@@ -67,10 +74,10 @@ def notify(message, image, predictions, config):
 
     # crop to area of interest
     width, height = image.size
-    left = min(p['boundingBox']['left'] for p in predictions) * width
-    right = max(p['boundingBox']['left'] + p['boundingBox']['width'] for p in predictions) * width
-    top = min(p['boundingBox']['top'] for p in predictions) * height
-    bottom = max(p['boundingBox']['top'] + p['boundingBox']['height'] for p in predictions) * height
+    left = min(p['boundingBox']['left'] - 0.05 for p in predictions) * width
+    right = max(p['boundingBox']['left'] + p['boundingBox']['width'] + 0.05 for p in predictions) * width
+    top = min(p['boundingBox']['top'] - 0.05 for p in predictions) * height
+    bottom = max(p['boundingBox']['top'] + p['boundingBox']['height'] + 0.05 for p in predictions) * height
     center_x = left + (right - left) / 2
     center_y = top + (bottom - top) / 2
     show_width = max(width / 4, right - left)
@@ -107,6 +114,7 @@ def notify(message, image, predictions, config):
             enrichments = sighthound.enrich(output_bytes.read(), save_json)
             if len(enrichments['message']) > 0:
                 message = enrichments['message']
+                echo_speaks(config, 'Vehicle in driveway ' + message)
             for plate in enrichments['plates']:
                 if plate in friendly_plates and priority <= 0:
                     print('Ignoring friendly vehicle {}'.format(friendly_plates[plate]))

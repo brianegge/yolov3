@@ -14,9 +14,9 @@ class ObjectDetection(object):
 
     ANCHORS = np.array([[0.573, 0.677], [1.87, 2.06], [3.34, 5.47], [7.88, 3.53], [9.77, 9.17]])
     IOU_THRESHOLD = 0.45
-    DEFAULT_INPUT_SIZE = 512 * 512 * 4
+    DEFAULT_INPUT_SIZE = 512 * 512
 
-    def __init__(self, labels, prob_threshold=0.10, max_detections = 20):
+    def __init__(self, labels, prob_threshold=0.10, max_detections = 20, scale=4):
         """Initialize the class
 
         Args:
@@ -30,6 +30,7 @@ class ObjectDetection(object):
         self.labels = labels
         self.prob_threshold = prob_threshold
         self.max_detections = max_detections
+        self.scale = scale
 
     def _logistic(self, x):
         return np.where(x > 0, 1 / (1 + np.exp(-x)), np.exp(x) / (1 + np.exp(x)))
@@ -129,7 +130,7 @@ class ObjectDetection(object):
 
     def preprocess(self, image):
         image = image.convert("RGB") if image.mode != "RGB" else image
-        ratio = math.sqrt(self.DEFAULT_INPUT_SIZE / image.width / image.height)
+        ratio = math.sqrt(self.DEFAULT_INPUT_SIZE * self.scale / image.width / image.height)
         new_width = int(image.width * ratio)
         new_height = int(image.height * ratio)
         new_width = 32 * round(new_width / 32);
