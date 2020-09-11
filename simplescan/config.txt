@@ -6,6 +6,7 @@ vehicle-labelfile-path=vehicle-labels.txt
 prob_threshold=0.10
 threshold=0.9
 save-path=/mnt/elements/capture/
+excludes-file=excludes.json
 
 [colors]
 dog=yellow

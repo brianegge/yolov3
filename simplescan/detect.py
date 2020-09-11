@@ -35,17 +35,15 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
     def predict(self, preprocessed_image):
         inputs = np.array(preprocessed_image, dtype=np.float32)[np.newaxis,:,:,(2,1,0)] # RGB -> BGR
         inputs = np.ascontiguousarray(np.rollaxis(inputs, 3, 1))
-        print("ONNXRuntimeObjectDetection input shape")
 
         if self.is_fp16:
             inputs = inputs.astype(np.float16)
 
         outputs = self.session.run(None, {self.input_name: inputs})
-        print("ONNXRuntimeObjectDetection output shape {}".format(outputs[0].shape))
         return np.squeeze(outputs).transpose((1,2,0)).astype(np.float32)
 
 class Camera():
-    def __init__(self, config):
+    def __init__(self, config, excludes):
         self.name = config['name']
         self.config = config
         self.objects = []
@@ -53,6 +51,7 @@ class Camera():
         self.is_file = False
         self.last_st_mode = None
         self.vehicle_check = config.getboolean('vehicle_check', False)
+        self.excludes = excludes
 
     def capture(self, session):
         if 'file' in self.config:
@@ -125,12 +124,21 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
     # remove road
     if cam.name in ['front lawn','driveway']:
         predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
-    elif cam.name == 'shed':
-        # flag pole on far right
-        predictions = list(filter(lambda p: not(p['center']['x'] > 0.93 and p['center']['y'] < 0.396021495), predictions))
-    elif cam.name == 'deck':
-        # flag pole 
-        predictions = list(filter(lambda p: not(p['center']['x'] < 0.3031482 and p['center']['y'] < 0.28), predictions))
+    #elif cam.name == 'shed':
+    #    # flag pole on far right
+    #    predictions = list(filter(lambda p: not(p['center']['x'] > 0.93 and p['center']['y'] < 0.396021495), predictions))
+    #elif cam.name == 'deck':
+    #    # flag pole 
+    #    predictions = list(filter(lambda p: not(p['center']['x'] < 0.3031482 and p['center']['y'] < 0.28), predictions))
+    for p in predictions:
+        if p['tagName'] in cam.excludes:
+            for e in cam.excludes[p['tagName']]:
+                iou = bb_intersection_over_union(e,p['boundingBox'])
+                if iou > 0.5:
+                    print("Static exclude {} at {}".format(p['tagName'],p['boundingBox']))
+                    p['ignore'] = True
+    predictions = list(filter(lambda p: not('ignore' in p), predictions))
+
     save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
     os.makedirs(save_dir,exist_ok=True)
     if len(predictions) == 0:

@@ -16,6 +16,7 @@ from datetime import datetime
 import requests
 import faulthandler, signal
 import argparse
+import json
 
 async def main(options):
     config = configparser.ConfigParser()
@@ -28,6 +29,11 @@ async def main(options):
     if 'vehicle-labelfile-path' in detector_config:
         with open(detector_config['vehicle-labelfile-path'], 'r') as f:
             vehicle_labels = [l.strip() for l in f.readlines()]
+    # open static exclusion
+    excludes={}
+    if 'excludes-file' in detector_config:
+        with open(detector_config['excludes-file']) as f:
+            excludes = json.load(f)
 
     vehicle_model = None
     if options.trt:
@@ -43,7 +49,7 @@ async def main(options):
     cams=[]
     i = 0
     while "cam%d" % i in config.sections():
-        cams.append(Camera(config["cam%d" % i]))
+        cams.append(Camera(config["cam%d" % i],excludes.get(config["cam%d" % i]['name'], {})))
         i += 1
     print("Configured %i cams" % i)
     pool = concurrent.futures.ThreadPoolExecutor()

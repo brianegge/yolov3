@@ -86,14 +86,15 @@ def enrich(image_bytes, save_json):
     plates = []
     for o in result['objects']:
         annotations = o['vehicleAnnotation']
-        if 'attributes' in annotations:
-            system = annotations['attributes']['system']
-            if 'color' in system:
-                message += system['color']['name'] + " "
-            if 'make' in system and 'model' in system and system['make']['confidence'] > 0.6:
-                message += system['make']['name'] + " " + system['model']['name'] + " "
-            elif 'vehicleType' in system:
-                message += system['vehicleType'] + " "
+        if annotations['recognitionConfidence'] > 0.0:
+            if 'attributes' in annotations:
+                system = annotations['attributes']['system']
+                if 'color' in system:
+                    message += system['color']['name'] + " "
+                if 'make' in system and 'model' in system and system['make']['confidence'] > 0.6:
+                    message += system['make']['name'] + " " + system['model']['name'] + " "
+                elif 'vehicleType' in system:
+                    message += system['vehicleType'] + " "
         if 'licenseplate' in annotations:
             if annotations['licenseplate']['attributes']['system']['region']['confidence'] > 0.4:
                 region = annotations['licenseplate']['attributes']['system']['region']['name']
