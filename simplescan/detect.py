@@ -177,7 +177,6 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
         prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
         prev_time = cam.prev_predictions.get(p['tagName'] + "-time", datetime.utcfromtimestamp(0))
         if datetime.now() - prev_time > timedelta(minutes=15) and len(prev_class) > 0: # clear if we haven't seen this class in 15 minutes on this camera
-            cam.prev_predictions[p['tagName']] = []
             prev_class.clear()
             print('Cleared previous predictions for %s on %s' % (p['tagName'], cam.name))
         cam.prev_predictions[p['tagName'] + '-time'] = datetime.now()

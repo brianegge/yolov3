@@ -6,6 +6,7 @@ vehicle-labelfile-path=vehicle-labels.txt
 prob_threshold=0.10
 threshold=0.8
 save-path=/mnt/elements/capture/
+license-plates=license-plates.json
 
 [colors]
 dog=yellow
@@ -15,8 +16,8 @@ raccoon=brown
 vehicle=violet
 
 [cam0]
-#file=capture/20200910/160141-shed-dog.jpg
-file=capture/vehicles/civic2.jpg
+file=capture/20200914/124725-shed-vehicle.jpg
+#file=capture/vehicles/civic2.jpg
 #uri=http://192.168.254.2:8085/?action=snapshot
 name=shed
 vehicle_check=true

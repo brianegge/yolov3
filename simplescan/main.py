@@ -79,6 +79,9 @@ async def main(options):
           #  print("Unexpected error:", sys.exc_info()[0])
       end_time = timer()
       print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ) )
+      if prediction_time < 1.0:
+          print("Cameras appear down, wating 30 seconds")
+          time.sleep(30)
     
 if __name__ == '__main__':
     faulthandler.register(signal.SIGUSR1)

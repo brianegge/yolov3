@@ -8,10 +8,6 @@ try:
 except:
     import http.client as httplib # Python 3
 
-headers = {"Content-type": "application/json",
-"X-Access-Token": "KhKhaWgY7Oku4p8TwYjW4bytJtzNCvyNfMPd"}
-conn = httplib.HTTPSConnection("dev.sighthoundapi.com",
-context=ssl.SSLContext(ssl.PROTOCOL_TLSv1_2))
 
 us_state_abbrev = {
     'Alabama': 'AL',
@@ -72,12 +68,25 @@ us_state_abbrev = {
     'Wyoming': 'WY'
 }
 
+
 def enrich(image_bytes, save_json):
     image_data = base64.b64encode(image_bytes).decode()
     
+    headers = {"Content-type": "application/json",
+               "X-Access-Token": "KhKhaWgY7Oku4p8TwYjW4bytJtzNCvyNfMPd"}
     params = json.dumps({"image": image_data})
-    conn.request("POST", "/v1/recognition?objectType=vehicle,licenseplate", params, headers)
-    response = conn.getresponse()
+    try:
+        conn = httplib.HTTPSConnection("dev.sighthoundapi.com",
+                context=ssl.SSLContext(ssl.PROTOCOL_TLSv1_2))
+        conn.request("POST", "/v1/recognition?objectType=vehicle,licenseplate", params, headers)
+        response = conn.getresponse()
+    except:
+        print("retrying sightound")
+        conn = httplib.HTTPSConnection("dev.sighthoundapi.com",
+                context=ssl.SSLContext(ssl.PROTOCOL_TLSv1_2))
+        conn.request("POST", "/v1/recognition?objectType=vehicle,licenseplate", params, headers)
+        response = conn.getresponse()
+
     result = json.loads(response.read())
     print("Detection Results = " + json.dumps(result, indent = 4 ))
     with open(save_json, 'w') as f:
@@ -90,20 +99,22 @@ def enrich(image_bytes, save_json):
             if 'attributes' in annotations:
                 system = annotations['attributes']['system']
                 if 'color' in system:
-                    message += system['color']['name'] + " "
+                    color = system['color']['name']
+                    color = color.split('/')[0]
+                    message += color + " "
                 if 'make' in system and 'model' in system and system['make']['confidence'] > 0.6:
                     message += system['make']['name'] + " " + system['model']['name'] + " "
                 elif 'vehicleType' in system:
                     message += system['vehicleType'] + " "
         if 'licenseplate' in annotations:
-            if annotations['licenseplate']['attributes']['system']['region']['confidence'] > 0.4:
+            if annotations['licenseplate']['attributes']['system']['region']['confidence'] > 0.55:
                 region = annotations['licenseplate']['attributes']['system']['region']['name']
                 if region in us_state_abbrev:
+                    # if it's not one of the 50 states it's probably an error
                     region = us_state_abbrev[region]
-                message += region + " "
-            plate = annotations['licenseplate']['attributes']['system']['string']['name']
+                    message += region + " plate "
+            plate = annotations['licenseplate']['attributes']['system']['string']
             plates.append(plate)
-            message += plate
     return {'message':message,'plates':plates}
 
 if __name__ == '__main__':

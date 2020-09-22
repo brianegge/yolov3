@@ -7,6 +7,7 @@ prob_threshold=0.10
 threshold=0.9
 save-path=/mnt/elements/capture/
 excludes-file=excludes.json
+license-plates=license-plates.json
 
 [colors]
 dog=yellow
@@ -90,6 +91,11 @@ cat=1
 
 [sounds]
 deer=siren
+cat=magic
+dog=gamelan
+vehicle=tugboat
+person=siren
+package=cashregister
 
 [smartthings]
 token=c385898c-c65f-4d0f-a897-6438618cbcea

@@ -15,10 +15,6 @@ from urllib.parse import quote
 
 #logging.basicConfig(level=logging.DEBUG)
 
-friendly_plates = {
-        '247VXP' : 'Karly\'s CR-V',
-        'AT34047' : 'Brian\'s Civic'
-}
 
 def get_st_mode(config):
     st_config = config['smartthings']
@@ -108,22 +104,45 @@ def notify(message, image, predictions, config):
     output_bytes.seek(0)
     vehicles = list(filter(lambda p: p['tagName'] == 'vehicle', predictions))
     if len(vehicles):
+        if len(notify.license_plates) == 0:
+            with open(config['detector']['license-plates']) as f:
+                notify.license_plates = json.load(f)
         try:
             save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
             save_json = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + vehicles[0]['camName'] + "-" + "sighthound.txt")
             enrichments = sighthound.enrich(output_bytes.read(), save_json)
+            owner = None
+            make = None
+            plate_name = None
+            for plate in enrichments['plates']:
+                if plate['name'] in notify.license_plates:
+                    owner = notify.license_plates[plate['name']].get('owner')
+                    make = notify.license_plates[plate['name']].get('make')
+                    if notify.license_plates[plate['name']].get("announce", True) == False:
+                        print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
+                        return
+                elif plate['confidence'] > 0.05:
+                    plate_name = plate['name']
             if len(enrichments['message']) > 0:
                 message = enrichments['message']
-                echo_speaks(config, 'Vehicle in driveway ' + message)
-            for plate in enrichments['plates']:
-                if plate in friendly_plates and priority <= 0:
-                    print('Ignoring friendly vehicle {}'.format(friendly_plates[plate]))
-                    return
+                if owner is not None:
+                    message = owner + "'s " + message
+                elif make is not None:
+                    message = make
+                echo_speaks(config, 'Vehicle in driveway: ' + message)
+                # don't announce plate
+                if plate_name is not None:
+                    message += ' ' + plate_name
         except:
             traceback.print_exc(file=sys.stdout)
             print('Failed to enrich via sighthound')
         output_bytes.seek(0)
 
+    packages = list(filter(lambda p: p['tagName'] == 'package', predictions))
+    for package in packages:
+        echo_speaks(config, 'Package delivered near {}'.format(package['camName']))
+
+    print("Sending Pushover message '{}'".format(message))
     r = requests.post("https://api.pushover.net/1/messages.json", data = {
       "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
       "user": "uzziquh6d7a4vyouise2ti482gc1pq",
@@ -136,3 +155,5 @@ def notify(message, image, predictions, config):
     })
     if r.status_code != 200:
         pprint(r)
+
+notify.license_plates = {}
