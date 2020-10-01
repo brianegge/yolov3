@@ -77,7 +77,6 @@ dog=-2
 fox=1
 person=0
 raccoon=0
-vehicle=0
 
 # mode specific priorities override default priority
 [priority-home]

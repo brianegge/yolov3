@@ -17,9 +17,11 @@ from urllib.parse import quote
 
 
 def get_st_mode(config):
-    st_config = config['smartthings']
-    token = st_config['token']
     r = requests.get('http://raspberrypi-zerow.local:8282/mode')
+    return r.content.decode("utf-8").lower()
+
+def get_garage_lights(config):
+    r = requests.get('http://raspberrypi-zerow.local:8282/device/Garage Lights')
     return r.content.decode("utf-8").lower()
 
 def echo_speaks(config, message):
@@ -39,6 +41,10 @@ def notify(message, image, predictions, config):
     priority = None
     has_package = False
     has_dog = False
+    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle', predictions))
+    has_vehicles = len(vehicles) > 0
+    if has_vehicles:
+        notify_vehicle = get_garage_lights(config) != "on"
     sound = 'pushover'
     for p in predictions:
         tagName = p['tagName']
@@ -92,7 +98,11 @@ def notify(message, image, predictions, config):
     cropped_image = image.crop(crop_rectangle)
 
     if priority is None:
-        priority = 0
+        if has_vehicles and not notify_vehicle:
+            print("Garage light on - ignore own vehicle")
+            priority = -2
+        else:
+            priority = 0
     if priority <= -3:
         print('Ignoring "%s" with priority %d, mode %s' % (message,priority, mode) )
         return
@@ -102,8 +112,7 @@ def notify(message, image, predictions, config):
     output_bytes = BytesIO()
     cropped_image.save(output_bytes, 'jpeg')
     output_bytes.seek(0)
-    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle', predictions))
-    if len(vehicles):
+    if has_vehicles:
         if len(notify.license_plates) == 0:
             with open(config['detector']['license-plates']) as f:
                 notify.license_plates = json.load(f)
@@ -123,13 +132,16 @@ def notify(message, image, predictions, config):
                         return
                 elif plate['confidence'] > 0.05:
                     plate_name = plate['name']
+                    if 'state' in plate:
+                        plate_name = "{} {}".format(plate['state'], plate_name)
             if len(enrichments['message']) > 0:
                 message = enrichments['message']
                 if owner is not None:
                     message = owner + "'s " + message
                 elif make is not None:
                     message = make
-                echo_speaks(config, 'Vehicle in driveway: ' + message)
+                if notify_vehicle:
+                    echo_speaks(config, 'Vehicle in driveway: ' + message)
                 # don't announce plate
                 if plate_name is not None:
                     message += ' ' + plate_name

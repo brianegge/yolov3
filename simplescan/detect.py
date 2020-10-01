@@ -101,7 +101,11 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
         print("Can't capture %s camera" % cam.name)
         return 0
     prediction_start = timer()
-    predictions = od_model.predict_image(image)
+    try:
+        predictions = od_model.predict_image(image)
+    except OSError as e:
+        print("%s=error:" % cam.name, sys.exc_info()[0])
+        return 0
     vehicle_predictions = []
     if cam.vehicle_check:
         vehicle_predictions = vehicle_model.predict_image(image)
@@ -219,6 +223,6 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
 
     if len(detected_objects):
         notify("%s near %s" % (",".join(detected_objects),cam.name), image, predictions, config)
+        cam.objects = detected_objects
 
-    cam.objects = detected_objects
     return prediction_time

@@ -107,13 +107,13 @@ def enrich(image_bytes, save_json):
                 elif 'vehicleType' in system:
                     message += system['vehicleType'] + " "
         if 'licenseplate' in annotations:
+            plate = annotations['licenseplate']['attributes']['system']['string']
             if annotations['licenseplate']['attributes']['system']['region']['confidence'] > 0.55:
                 region = annotations['licenseplate']['attributes']['system']['region']['name']
+                plate['region'] = region
                 if region in us_state_abbrev:
                     # if it's not one of the 50 states it's probably an error
-                    region = us_state_abbrev[region]
-                    message += region + " plate "
-            plate = annotations['licenseplate']['attributes']['system']['string']
+                    plate['state'] = us_state_abbrev[region]
             plates.append(plate)
     return {'message':message,'plates':plates}
 
