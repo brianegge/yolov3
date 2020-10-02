@@ -112,12 +112,13 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
         vehicle_predictions = list(filter(lambda p: p['probability'] > 0.5, vehicle_predictions))
     prediction_time = (timer() - prediction_start)
     # filter out lower predictions
-    predictions = list(filter(lambda p: p['probability'] > threshold, predictions))
+    predictions = list(filter(lambda p: p['probability'] > threshold or p['tagName'] in cam.objects, predictions))
     # include all vehicle predictions for now
     predictions += vehicle_predictions
-    #  lots of false positives for dog
-    predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == 'dog'), predictions))
-    predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == 'cat'), predictions))
+    #  lots of false positives for cat and dog
+    for label in ['dog','cat']:
+        if not label in cam.objects:
+            predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == label), predictions))
     add_centers(predictions)
     if len(predictions) == 0:
         print('%s=[], ' % cam.name, end='', flush=True)
@@ -128,12 +129,6 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
     # remove road
     if cam.name in ['front lawn','driveway']:
         predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
-    #elif cam.name == 'shed':
-    #    # flag pole on far right
-    #    predictions = list(filter(lambda p: not(p['center']['x'] > 0.93 and p['center']['y'] < 0.396021495), predictions))
-    #elif cam.name == 'deck':
-    #    # flag pole 
-    #    predictions = list(filter(lambda p: not(p['center']['x'] < 0.3031482 and p['center']['y'] < 0.28), predictions))
     for p in predictions:
         if p['tagName'] in cam.excludes:
             for e in cam.excludes[p['tagName']]:
