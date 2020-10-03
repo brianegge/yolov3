@@ -91,9 +91,6 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
             image = Image.open(BytesIO(raw_image))
         except UnidentifiedImageError as e:
             print("%s=error:" % cam.name, sys.exc_info()[0])
-            #track = traceback.format_exc()
-            #print(e)
-            #print(track)
             continue
         else:
             break
@@ -112,23 +109,23 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
         vehicle_predictions = list(filter(lambda p: p['probability'] > 0.5, vehicle_predictions))
     prediction_time = (timer() - prediction_start)
     # filter out lower predictions
-    predictions = list(filter(lambda p: p['probability'] > threshold or p['tagName'] in cam.objects, predictions))
-    # include all vehicle predictions for now
-    predictions += vehicle_predictions
-    #  lots of false positives for cat and dog
-    for label in ['dog','cat']:
-        if not label in cam.objects:
-            predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == label), predictions))
-    add_centers(predictions)
+    predictions = list(filter(lambda p: p['probability'] > threshold or (p['tagName'] in cam.objects and p['probability'] > 0.4), predictions))
     if len(predictions) == 0:
         print('%s=[], ' % cam.name, end='', flush=True)
     else:
         print('')
         print(cam.name, end="=")
         pprint(predictions)
+    # include all vehicle predictions for now
+    predictions += vehicle_predictions
+    #  lots of false positives for cat and dog
+    #for label in ['dog','cat']:
+    #    if not label in cam.objects:
+    #        predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == label), predictions))
+    add_centers(predictions)
     # remove road
     if cam.name in ['front lawn','driveway']:
-        predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and p['tagName'] == 'person'), predictions))
+        predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and (p['tagName'] in ['vehicle','person'])), predictions))
     for p in predictions:
         if p['tagName'] in cam.excludes:
             for e in cam.excludes[p['tagName']]:
@@ -217,7 +214,13 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
                 print(r.text)
 
     if len(detected_objects):
-        notify("%s near %s" % (",".join(detected_objects),cam.name), image, predictions, config)
+        if cam.name == 'driveway':
+            message = "%s in %s" % (",".join(detected_objects),cam.name)
+        elif cam.name == 'shed':
+            message = "%s in front of garage" % ",".join(detected_objects)
+        else:
+            message = "%s near %s" % (",".join(detected_objects),cam.name)
+        notify(message, image, predictions, config)
         cam.objects = detected_objects
 
     return prediction_time

@@ -4,6 +4,11 @@
       {"left": 0.27583484, "top": 0.2292673, "width": 0.04625306, "height": 0.08308503, "comment": "flag"}
     ]
   },
+  "driveway":{
+    "vehicle":[
+      {"left": 0.0, "top": 0.0, "width": 1.0, "height": 0.1, "comment": "road"}
+    ]
+  },
   "front entry":{
     "cat":[
       {"left": 0.06211105, "top": 0.64706273, "width": 0.02935632, "height": 0.09629095},

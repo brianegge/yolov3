@@ -30,6 +30,20 @@ def echo_speaks(config, message):
         url = st_config['echo_speaks']
         requests.get(url + quote(message))
 
+def edits1(word):
+    "All edits that are one edit away from `word`."
+    letters    = 'abcdefghijklmnopqrstuvwxyz0123456789'
+    splits     = [(word[:i], word[i:])    for i in range(len(word) + 1)]
+    deletes    = [L + R[1:]               for L, R in splits if R]
+    #transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R)>1]
+    replaces   = [L + c + R[1:]           for L, R in splits if R for c in letters]
+    inserts    = [L + c + R               for L, R in splits for c in letters]
+    return set(deletes + replaces + inserts)
+
+def edits2(word):
+    "All edits that are two edits away from `word`."
+    return (e2 for e1 in edits1(word) for e2 in edits1(e1))
+
 def notify(message, image, predictions, config):
     mode = get_st_mode(config)
     mode_key = 'priority-%s' % mode
@@ -124,13 +138,16 @@ def notify(message, image, predictions, config):
             make = None
             plate_name = None
             for plate in enrichments['plates']:
-                if plate['name'] in notify.license_plates:
-                    owner = notify.license_plates[plate['name']].get('owner')
-                    make = notify.license_plates[plate['name']].get('make')
-                    if notify.license_plates[plate['name']].get("announce", True) == False:
-                        print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
-                        return
-                elif plate['confidence'] > 0.05:
+                guesses = [plate['name']] + list(edits1(plate['name'])) + list(edits2(plate['name']))
+                for guess in guesses:
+                    if guess in notify.license_plates:
+                        owner = notify.license_plates[guess].get('owner')
+                        make = notify.license_plates[guess].get('make')
+                        if notify.license_plates[guess].get("announce", True) == False:
+                            print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
+                            return
+                        break
+                if owner is None and plate['confidence'] > 0.05:
                     plate_name = plate['name']
                     if 'state' in plate:
                         plate_name = "{} {}".format(plate['state'], plate_name)
@@ -141,7 +158,10 @@ def notify(message, image, predictions, config):
                 elif make is not None:
                     message = make
                 if notify_vehicle:
-                    echo_speaks(config, 'Vehicle in driveway: ' + message)
+                    if vehicles[0]['camName'] == 'shed':
+                        echo_speaks(config, 'Vehicle in front of garage: ' + message)
+                    else:
+                        echo_speaks(config, 'Vehicle in driveway: ' + message)
                 # don't announce plate
                 if plate_name is not None:
                     message += ' ' + plate_name
