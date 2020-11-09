@@ -39,6 +39,10 @@
   "front lawn":{
     "dog":[
       {"left": 0.84124335, "top": 0.62304389, "width": 0.03121287, "height": 0.05221055, "comment": "septic conduit"}
+    ],
+    "person":[
+      {"left": 0.24396737, "top": 0.35695081, "width": 0.03206453, "height": 0.09876887, "comment": "statue"},
+      {"left": 0.84077659, "top": 0.61672283, "width": 0.02720073, "height": 0.07379567, "comment": "septic conduit"}
     ]
   },
   "garage":{

@@ -74,9 +74,9 @@ async def main(options):
           except requests.exceptions.ConnectionError:
               print("cam:%s requests.exceptions.ConnectionError:" % cam.name, sys.exc_info()[0] )
 
-      for f in capture_futures:
+      for f in concurrent.futures.as_completed(capture_futures, timeout=90):
           try:
-              cam = f.result(timeout=90)
+              cam = f.result()
               if cam:
                   prediction_time += detect(cam, od_model, vehicle_model, config, st)
           except KeyboardInterrupt:
