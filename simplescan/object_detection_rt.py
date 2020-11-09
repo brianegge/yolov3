@@ -26,10 +26,11 @@ class ONNXTensorRTObjectDetection(ObjectDetection):
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
         if os.path.exists(engine_file_path) and os.path.getctime(engine_file_path) > os.path.getctime(model_filename):
             # If a serialized engine exists, use it instead of building an engine.
-            print("Reading engine from file {}".format(engine_file_path))
+            print("Reading engine from file {} for classes {}".format(engine_file_path,",".join(labels)))
             with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
                 self.engine = runtime.deserialize_cuda_engine(f.read())
         else:
+            print("Compiling model {}".format(os.path.basename(model_filename)))
             self.engine = self.get_engine(model_filename, engine_file_path)
         self.is_fp16 = False # network.get_input(0).type == 'tensor(float16)'
         self.input_name = 'input' # network.get_input(0).name
@@ -77,11 +78,13 @@ class ONNXTensorRTObjectDetection(ObjectDetection):
             np_image = np_image.astype(np.float16)
 
         self.cfx.push()
-        inputs, outputs, bindings, stream = common.allocate_buffers(self.engine)
-        # Do inference
-        inputs[0].host = np_image
-        trt_outputs = common.do_inference_v2(self.context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
-        self.cfx.pop()  # very important
+        try:
+            inputs, outputs, bindings, stream = common.allocate_buffers(self.engine)
+            # Do inference
+            inputs[0].host = np_image
+            trt_outputs = common.do_inference_v2(self.context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
+        finally:
+            self.cfx.pop()  # very important
         # Before doing post-processing, we need to reshape the outputs as the common.do_inference will give us flat arrays.
         # There should be nothing to 'round' here. If there is, we made a mistake earlier
         output_shapes = [(1, (len(self.labels) + 5) * 5, int(self.model_height / 32), int(self.model_width  / 32))]

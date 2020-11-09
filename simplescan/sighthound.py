@@ -115,6 +115,8 @@ def enrich(image_bytes, save_json):
                     # if it's not one of the 50 states it's probably an error
                     plate['state'] = us_state_abbrev[region]
             plates.append(plate)
+    if message == "":
+        message = "Unidentified vehicle"
     return {'message':message,'plates':plates}
 
 if __name__ == '__main__':

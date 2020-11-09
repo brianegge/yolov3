@@ -10,29 +10,16 @@ import os
 sys.path.insert(0,'/home/egge/detector/simplescan/pysmartthings/pysmartthings')
 import pysmartthings
 import sighthound
-from urllib.parse import quote
+import re
 #import logging
 
 #logging.basicConfig(level=logging.DEBUG)
 
 
-def get_st_mode(config):
-    r = requests.get('http://raspberrypi-zerow.local:8282/mode')
-    return r.content.decode("utf-8").lower()
-
-def get_garage_lights(config):
-    r = requests.get('http://raspberrypi-zerow.local:8282/device/Garage Lights')
-    return r.content.decode("utf-8").lower()
-
-def echo_speaks(config, message):
-    st_config = config['smartthings']
-    if 'echo_speaks' in st_config:
-        url = st_config['echo_speaks']
-        requests.get(url + quote(message))
 
 def edits1(word):
     "All edits that are one edit away from `word`."
-    letters    = 'abcdefghijklmnopqrstuvwxyz0123456789'
+    letters    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     splits     = [(word[:i], word[i:])    for i in range(len(word) + 1)]
     deletes    = [L + R[1:]               for L, R in splits if R]
     #transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R)>1]
@@ -44,8 +31,8 @@ def edits2(word):
     "All edits that are two edits away from `word`."
     return (e2 for e1 in edits1(word) for e2 in edits1(e1))
 
-def notify(message, image, predictions, config):
-    mode = get_st_mode(config)
+def notify(message, image, predictions, config, st):
+    mode = st.get_st_mode()
     mode_key = 'priority-%s' % mode
     if mode_key in config:
         mode_priorities = config[mode_key]
@@ -57,28 +44,33 @@ def notify(message, image, predictions, config):
     has_dog = False
     vehicles = list(filter(lambda p: p['tagName'] == 'vehicle', predictions))
     has_vehicles = len(vehicles) > 0
+    has_person  = len(list(filter(lambda p: p['tagName'] == 'person', predictions))) > 0
+    has_dog  = len(list(filter(lambda p: p['tagName'] == 'dog', predictions))) > 0
+    has_package  = len(list(filter(lambda p: p['tagName'] == 'package', predictions))) > 0
     if has_vehicles:
-        notify_vehicle = get_garage_lights(config) != "on"
+        notify_vehicle = st.should_notify_vehicle()
+    if has_person:
+        notify_person = st.should_notify_person()
     sound = 'pushover'
     for p in predictions:
         tagName = p['tagName']
-        if tagName == 'dog':
-            has_dog = True
-        elif tagName == 'package':
-            has_package = True
-        if tagName in mode_priorities:
+        if tagName == 'person' and not notify_person:
+            i = -3
+            # we are still outside, keep detection off
+            st.suppress_notify_person()
+        elif tagName in mode_priorities:
             i = mode_priorities.getint(p['tagName'])
             print('mode priority %s=%d' % (mode_key,i))
         elif tagName in priorities:
             i = priorities.getint(p['tagName'])
-            print('config priority=%d' % i)
+            print('config priority %a=%d' % (tagName,i))
         else:
-            print('default priority for %s' % p['tagName'])
+            print('default priority for %s' % tagName)
             i = None
         if tagName in config['sounds']:
             sound = config['sounds'][tagName]
         if i is not None:
-            if p['tagName'] == 'dog' and p['camName'] == 'garage':
+            if tagName == 'dog' and p['camName'] == 'garage' and not has_person:
                 priority = 1
             if priority is None:
                 priority = i
@@ -108,12 +100,12 @@ def notify(message, image, predictions, config):
     top = min(top, center_y - show_height / 2)
     top = max(0,top)
     crop_rectangle = (left, top, left + show_width, top + show_height)
-    print("Cropping to %d,%d,%d,%d" % crop_rectangle)
+    # print("Cropping to %d,%d,%d,%d" % crop_rectangle)
     cropped_image = image.crop(crop_rectangle)
 
     if priority is None:
         if has_vehicles and not notify_vehicle:
-            print("Garage light on - ignore own vehicle")
+            print("Ignoring vehicles right now")
             priority = -2
         else:
             priority = 0
@@ -146,25 +138,30 @@ def notify(message, image, predictions, config):
                         if notify.license_plates[guess].get("announce", True) == False:
                             print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
                             return
+                        if owner.lower() == "house cleaner":
+                            st.set_st_scene("House Cleaning")
+                            st.open_garage_door()
                         break
                 if owner is None and plate['confidence'] > 0.05:
                     plate_name = plate['name']
                     if 'state' in plate:
                         plate_name = "{} {}".format(plate['state'], plate_name)
             if len(enrichments['message']) > 0:
-                message = enrichments['message']
+                vehicle_message = enrichments['message']
                 if owner is not None:
-                    message = owner + "'s " + message
+                    vehicle_message = owner + "'s " + vehicle_message
                 elif make is not None:
-                    message = make
+                    vehicle_message = make
                 if notify_vehicle:
                     if vehicles[0]['camName'] == 'shed':
-                        echo_speaks(config, 'Vehicle in front of garage: ' + message)
+                        st.echo_speaks('Vehicle in front of garage: ' + vehicle_message)
                     else:
-                        echo_speaks(config, 'Vehicle in driveway: ' + message)
+                        st.echo_speaks('Vehicle in driveway: ' + vehicle_message)
                 # don't announce plate
                 if plate_name is not None:
-                    message += ' ' + plate_name
+                    vehicle_message += ' ' + plate_name
+                if 'vehicle' in message:
+                    message = re.sub('vehicle', vehicle_message, message)
         except:
             traceback.print_exc(file=sys.stdout)
             print('Failed to enrich via sighthound')
@@ -172,9 +169,9 @@ def notify(message, image, predictions, config):
 
     packages = list(filter(lambda p: p['tagName'] == 'package', predictions))
     for package in packages:
-        echo_speaks(config, 'Package delivered near {}'.format(package['camName']))
+        st.echo_speaks('Package delivered near {}'.format(package['camName']))
 
-    print("Sending Pushover message '{}'".format(message))
+    print("Sending Pushover message '{}'".format(message), flush=True)
     r = requests.post("https://api.pushover.net/1/messages.json", data = {
       "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
       "user": "uzziquh6d7a4vyouise2ti482gc1pq",

@@ -2,6 +2,5 @@ cat
 deer
 dog
 fox
-package
 person
 raccoon

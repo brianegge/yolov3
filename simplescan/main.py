@@ -17,10 +17,13 @@ import requests
 import faulthandler, signal
 import argparse
 import json
+import time
+from smartthings import SmartThings
 
 async def main(options):
     config = configparser.ConfigParser()
     config.read(options.config_file)
+    st = SmartThings(config)
     detector_config = config['detector']
 
     # Load labels
@@ -52,35 +55,37 @@ async def main(options):
         cams.append(Camera(config["cam%d" % i],excludes.get(config["cam%d" % i]['name'], {})))
         i += 1
     print("Configured %i cams" % i)
-    pool = concurrent.futures.ThreadPoolExecutor()
-    session = requests.Session()
+    async_pool = concurrent.futures.ThreadPoolExecutor()
+    sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     
     while True:
       start_time = timer()
       prediction_time = 0.0
-      futures = []
+      capture_futures = []
       print("Checking ", end="")
       for cam in cams:
           try:
-              raw_image = cam.capture(session)
-              if options.sync:
-                  prediction_time += detect(cam, raw_image, od_model, vehicle_model, config)
+              if cam.capture_async:
+                  capture_futures.append(async_pool.submit(cam.capture))
               else:
-                  futures.append(pool.submit(detect, cam, raw_image, od_model, vehicle_model, config))
+                  capture_futures.append(sync_pool.submit(cam.capture))
+          except KeyboardInterrupt:
+              return
           except requests.exceptions.ConnectionError:
               print("cam:%s requests.exceptions.ConnectionError:" % cam.name, sys.exc_info()[0] )
 
-      for f in futures:
+      for f in capture_futures:
           try:
-              prediction_time += f.result(timeout=90)
+              cam = f.result(timeout=90)
+              if cam:
+                  prediction_time += detect(cam, od_model, vehicle_model, config, st)
           except KeyboardInterrupt:
               return
-          #except:
-          #  print("Unexpected error:", sys.exc_info()[0])
+
       end_time = timer()
-      print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ) )
+      print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ), flush=True)
       if prediction_time < 1.0:
-          print("Cameras appear down, wating 30 seconds")
+          print("Cameras appear down, waiting 30 seconds")
           time.sleep(30)
     
 if __name__ == '__main__':

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from timeit import default_timer as timer
 import requests
 from requests.auth import HTTPDigestAuth
-from notify import notify, get_st_mode
+from notify import notify
 from datetime import date,datetime,timedelta
 from PIL import UnidentifiedImageError
 import traceback
@@ -49,20 +49,30 @@ class Camera():
         self.objects = []
         self.prev_predictions = {}
         self.is_file = False
-        self.last_st_mode = None
         self.vehicle_check = config.getboolean('vehicle_check', False)
         self.excludes = excludes
+        self.session = requests.Session()
+        if 'user' in self.config:
+            self.session.auth = HTTPDigestAuth(self.config['user'], self.config['password'])
+        self.capture_async = self.config.getboolean('async', False)
 
-    def capture(self, session):
-        if 'file' in self.config:
-            self.is_file = True
-            return open(self.config['file'], "rb").read()
-        elif 'user' in self.config:
-            r = session.get(self.config['uri'], auth=HTTPDigestAuth(self.config['user'], self.config['password']))
-            return r.content
-        else:
-            r = session.get(self.config['uri'])
-            return r.content
+    def capture(self):
+        self.image = None
+        for _ in range(0,2):
+            if not self.image is None:
+                break
+            if 'file' in self.config:
+                self.is_file = True
+                raw_image = open(self.config['file'], "rb").read()
+            else:
+                r = self.session.get(self.config['uri'])
+                raw_image = r.content
+            try:
+                self.image = Image.open(BytesIO(raw_image))
+            except UnidentifiedImageError as e:
+                print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
+                self.image = None
+        return self
     
 def draw_bbox(image, p, color):
     w,h = image.size
@@ -82,18 +92,10 @@ def add_centers(predictions):
         center['x'] = bbox['left'] + bbox['width'] / 2.0
         center['y'] = bbox['top'] + bbox['height'] / 2.0
 
-def detect(cam, raw_image, od_model, vehicle_model, config):
+def detect(cam, od_model, vehicle_model, config, st):
     threshold = config['detector'].getfloat('threshold')
     smartthings = config['smartthings']
-    image = None
-    for _ in range(2):
-        try:
-            image = Image.open(BytesIO(raw_image))
-        except UnidentifiedImageError as e:
-            print("%s=error:" % cam.name, sys.exc_info()[0])
-            continue
-        else:
-            break
+    image = cam.image
     if image == None:
         print("Can't capture %s camera" % cam.name)
         return 0
@@ -106,18 +108,16 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
     vehicle_predictions = []
     if cam.vehicle_check:
         vehicle_predictions = vehicle_model.predict_image(image)
-        vehicle_predictions = list(filter(lambda p: p['probability'] > 0.5, vehicle_predictions))
+        # include all vehicle predictions for now
+        predictions += vehicle_predictions
     prediction_time = (timer() - prediction_start)
     # filter out lower predictions
-    predictions = list(filter(lambda p: p['probability'] > threshold or (p['tagName'] in cam.objects and p['probability'] > 0.4), predictions))
+    predictions = list(filter(lambda p: p['probability'] > config['thresholds'].getfloat(p['tagName'], threshold) or (p['tagName'] in cam.objects and p['probability'] > 0.4), predictions))
     if len(predictions) == 0:
-        print('%s=[], ' % cam.name, end='', flush=True)
+        print('%s=[], ' % cam.name, end='')
     else:
-        print('')
         print(cam.name, end="=")
-        pprint(predictions)
-    # include all vehicle predictions for now
-    predictions += vehicle_predictions
+        print("[" + ",".join( "{}:{:.2f}".format(p['tagName'],p['probability']) for p in predictions ) + "]", end=', ', flush=True)
     #  lots of false positives for cat and dog
     #for label in ['dog','cat']:
     #    if not label in cam.objects:
@@ -160,14 +160,6 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
 
     #    return prediction_time
     colors = config['colors']
-    # check if this class has been reported for this location today
-    st_mode = get_st_mode(config)
-    # clear out any prior predictions when mode changes
-    if cam.last_st_mode != st_mode:
-        cam.last_st_mode = st_mode
-        if bool(cam.prev_predictions):
-            print("Clearing out previous predictons for cam %s now that we are in mode %s" % (cam.name, st_mode))
-        cam.prev_predictions = {}
     uniq_predictions = []
     for p in predictions:
         prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
@@ -201,26 +193,20 @@ def detect(cam, raw_image, od_model, vehicle_model, config):
         if not cam.is_file:
             image.save(basename + '-annotated.jpg')
 
-    predictions = uniq_predictions
-    detected_objects = list(p['tagName'] for p in predictions)
+    uniq_objects = list(p['tagName'] for p in uniq_predictions)
 
     # Only notify deer if not seen
-    if smartthings:
-        if 'deer' in detected_objects:
-            print("Deer alert!")
-            r = requests.get(smartthings['deer_alert'])
-            if r.json()['result'] != "OK":
-                print("Failed to crack open garage door for cat")
-                print(r.text)
+    if 'deer' in uniq_objects:
+        st.deer_alert()
 
-    if len(detected_objects):
+    if len(uniq_objects):
         if cam.name == 'driveway':
             message = "%s in %s" % (",".join(detected_objects),cam.name)
         elif cam.name == 'shed':
             message = "%s in front of garage" % ",".join(detected_objects)
         else:
             message = "%s near %s" % (",".join(detected_objects),cam.name)
-        notify(message, image, predictions, config)
+        notify(message, image, predictions, config, st)
         cam.objects = detected_objects
 
     return prediction_time
