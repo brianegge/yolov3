@@ -52,7 +52,9 @@
   },
   "shed":{
     "package":[
-      {"left": 0.90527523, "top": 0.14074589, "width": 0.06682512, "height": 0.15479457, "comment": "flag"}
+      {"left": 0.90527523, "top": 0.14074589, "width": 0.06682512, "height": 0.15479457, "comment": "flag"},
+      {"left": 0.91936919, "top": 0.18224468, "width": 0.07277787, "height": 0.18259084, "comment": "flag"},
+      {"left": 0.92221899, "top": 0.13629288, "width": 0.07134763, "height": 0.19087313, "comment": "flag"}
     ],
     "vehicle":[
       {"left": 0.86907104, "top": 0.69457513, "width": 0.02088317, "height": 0.03759351},

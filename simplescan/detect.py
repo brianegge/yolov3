@@ -55,6 +55,8 @@ class Camera():
         if 'user' in self.config:
             self.session.auth = HTTPDigestAuth(self.config['user'], self.config['password'])
         self.capture_async = self.config.getboolean('async', False)
+        self.prior_image = None
+        self.prior_time = None
 
     def capture(self):
         self.image = None
@@ -70,8 +72,8 @@ class Camera():
             try:
                 self.image = Image.open(BytesIO(raw_image))
             except UnidentifiedImageError as e:
-                print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
                 self.image = None
+                #print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
         return self
     
 def draw_bbox(image, p, color):
@@ -97,7 +99,7 @@ def detect(cam, od_model, vehicle_model, config, st):
     smartthings = config['smartthings']
     image = cam.image
     if image == None:
-        print("Can't capture %s camera" % cam.name)
+        print("{}=[X]".format(cam.name), end=", ")
         return 0
     prediction_start = timer()
     try:
@@ -143,6 +145,8 @@ def detect(cam, od_model, vehicle_model, config, st):
             basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
             image.save(basename + '.jpg')
             cam.objects.clear()
+        cam.prior_image = image
+        cam.prior_time = datetime.now()
         return prediction_time
     for p in predictions:
         p['camName'] = cam.name
@@ -164,7 +168,7 @@ def detect(cam, od_model, vehicle_model, config, st):
     for p in predictions:
         prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
         prev_time = cam.prev_predictions.get(p['tagName'] + "-time", datetime.utcfromtimestamp(0))
-        if datetime.now() - prev_time > timedelta(minutes=15) and len(prev_class) > 0: # clear if we haven't seen this class in 15 minutes on this camera
+        if datetime.now() - prev_time > timedelta(minutes=60) and len(prev_class) > 0: # clear if we haven't seen this class in 15 minutes on this camera
             prev_class.clear()
             print('Cleared previous predictions for %s on %s' % (p['tagName'], cam.name))
         cam.prev_predictions[p['tagName'] + '-time'] = datetime.now()
@@ -184,6 +188,10 @@ def detect(cam, od_model, vehicle_model, config, st):
     if len(uniq_predictions):
         # don't save file if we're reading from a file
         if not cam.is_file:
+            if cam.prior_image:
+                basename = os.path.join(save_dir,cam.prior_time.strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects) + "-prior")
+                cam.prior_image.save(basename + '.jpg')
+                cam.prior_image = None
             basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
             image.save(basename + '.jpg')
             with open(basename + '.txt', 'w') as file:
