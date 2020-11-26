@@ -1,2 +1,5 @@
 aiohttp
 pysmartthings
+opencv-python
+colorhash
+filterpy

@@ -8,7 +8,8 @@ import os
 import sys
 import configparser
 from timeit import default_timer as timer
-from detect import ONNXRuntimeObjectDetection,detect,Camera
+from detect import detect,Camera
+from onnx_object_detection import ONNXRuntimeObjectDetection
 from object_detection_rt import ONNXTensorRTObjectDetection
 import asyncio
 import concurrent.futures

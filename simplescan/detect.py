@@ -2,14 +2,10 @@ import os
 import sys
 from io import BytesIO
 from object_detection import ObjectDetection
-from utils import bb_intersection_over_union
-import onnxruntime
-import onnx
+from utils import bb_intersection_over_union,draw_bbox
 import numpy as np
-import tempfile
 from pprint import pprint
 import json
-from PIL import Image, ImageDraw
 from timeit import default_timer as timer
 import requests
 from requests.auth import HTTPDigestAuth
@@ -17,30 +13,6 @@ from notify import notify
 from datetime import date,datetime,timedelta
 from PIL import UnidentifiedImageError
 import traceback
-
-class ONNXRuntimeObjectDetection(ObjectDetection):
-    """Object Detection class for ONNX Runtime"""
-    def __init__(self, model_filename, labels, prob_threshold=0.10, scale=4):
-        super(ONNXRuntimeObjectDetection, self).__init__(labels, prob_threshold=prob_threshold, scale=scale)
-        model = onnx.load(model_filename)
-        with tempfile.TemporaryDirectory() as dirpath:
-            temp = os.path.join(dirpath, os.path.basename(model_filename))
-            model.graph.input[0].type.tensor_type.shape.dim[-1].dim_param = 'dim1'
-            model.graph.input[0].type.tensor_type.shape.dim[-2].dim_param = 'dim2'
-            onnx.save(model, temp)
-            self.session = onnxruntime.InferenceSession(temp)
-        self.input_name = self.session.get_inputs()[0].name
-        self.is_fp16 = self.session.get_inputs()[0].type == 'tensor(float16)'
-        
-    def predict(self, preprocessed_image):
-        inputs = np.array(preprocessed_image, dtype=np.float32)[np.newaxis,:,:,(2,1,0)] # RGB -> BGR
-        inputs = np.ascontiguousarray(np.rollaxis(inputs, 3, 1))
-
-        if self.is_fp16:
-            inputs = inputs.astype(np.float16)
-
-        outputs = self.session.run(None, {self.input_name: inputs})
-        return np.squeeze(outputs).transpose((1,2,0)).astype(np.float32)
 
 class Camera():
     def __init__(self, config, excludes):
@@ -76,16 +48,6 @@ class Camera():
                 #print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
         return self
     
-def draw_bbox(image, p, color):
-    w,h = image.size
-    # {'probability': 0.60014141, 'tagId': 1, 'tagName': 'deer', 'boundingBox': {'left': 0.94383056, 'top': 0.82897264, 'width': 0.05527838, 'height': 0.18486874}}
-    bbox = p['boundingBox']
-    rect_start = (w * bbox['left'], h * bbox['top'])
-    rect_end = (w * (bbox['left'] + bbox['width']), h * (bbox['top'] + bbox['height']))
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((rect_start, rect_end), outline = color, width=4)
-    del draw
-
 def add_centers(predictions):
     for p in predictions:
         bbox = p['boundingBox']
