@@ -1,3 +1,18 @@
+from PIL import ImageDraw,ImageFont,ImageColor
+
+def draw_bbox(image, p, color, label=None):
+    w,h = image.size
+    # {'probability': 0.60014141, 'tagId': 1, 'tagName': 'deer', 'boundingBox': {'left': 0.94383056, 'top': 0.82897264, 'width': 0.05527838, 'height': 0.18486874}}
+    bbox = p['boundingBox']
+    rect_start = (w * bbox['left'], h * bbox['top'])
+    rect_end = (w * (bbox['left'] + bbox['width']), h * (bbox['top'] + bbox['height']))
+    draw = ImageDraw.Draw(image, 'RGBA')
+    outline = ImageColor.getrgb(color) + (128, )
+    draw.rectangle((rect_start, rect_end), outline = outline, width=4)
+    if label:
+        font = ImageFont.truetype("arial.ttf", size=52)
+        draw.text( (w * bbox['left'], h * bbox['top'] - 52), text=label, fill=color, font=font)
+    del draw
 
 def bb_intersection_over_union(boxA, boxB):
     if isinstance(boxA,dict):
