@@ -42,17 +42,21 @@ def notify(message, image, predictions, config, st):
     priority = None
     has_package = False
     has_dog = False
-    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle', predictions))
+    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle' and p['uniq'] == True, predictions))
     has_vehicles = len(vehicles) > 0
-    has_person  = len(list(filter(lambda p: p['tagName'] == 'person', predictions))) > 0
+    has_person  = len(list(filter(lambda p: p['tagName'] == 'person' and p['uniq'] == True, predictions))) > 0
     has_dog  = len(list(filter(lambda p: p['tagName'] == 'dog', predictions))) > 0
     has_package  = len(list(filter(lambda p: p['tagName'] == 'package', predictions))) > 0
     if has_vehicles:
         notify_vehicle = st.should_notify_vehicle()
+    else:
+        notify_vehicle = False
     if has_person:
         notify_person = st.should_notify_person()
+    else:
+        notify_person = False
     sound = 'pushover'
-    for p in predictions:
+    for p in list(filter(lambda p: p['uniq'] == True, predictions)):
         tagName = p['tagName']
         if tagName == 'person' and not notify_person:
             i = -3

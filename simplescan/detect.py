@@ -119,7 +119,7 @@ def detect(cam, od_model, vehicle_model, config, st):
         print('%s=[], ' % cam.name, end='')
     else:
         print(cam.name, end="=")
-        print("[" + ",".join( "{}:{:.2f}".format(p['tagName'],p['probability']) for p in predictions ) + "]", end=', ', flush=True)
+        print("[" + ",".join( "{}:{:.2f}".format(p['tagName'],p['probability']) for p in predictions ), end=', ')
     #  lots of false positives for cat and dog
     #for label in ['dog','cat']:
     #    if not label in cam.objects:
@@ -151,18 +151,15 @@ def detect(cam, od_model, vehicle_model, config, st):
     for p in predictions:
         p['camName'] = cam.name
     detected_objects = list(p['tagName'] for p in predictions)
-    if detected_objects == cam.objects:
-        print("  %s still near %s" % (",".join(cam.objects), cam.name) )
     # Always open garage door, we can call this many times
     if smartthings:
-        if 'cat' in detected_objects:
+        if 'cat' in detected_objects and cam.name != 'garage':
             print("Cracking open garage door for cat")
             r = requests.get(smartthings['crack_garage'])
             if r.json()['result'] != "OK":
                 print("Failed to crack open garage door for cat")
                 print(r.text)
 
-    #    return prediction_time
     colors = config['colors']
     uniq_predictions = []
     for p in predictions:
@@ -175,13 +172,14 @@ def detect(cam, od_model, vehicle_model, config, st):
         skip = False
         for prev_box in prev_class:
             iou = bb_intersection_over_union(prev_box,p['boundingBox'])
-            if iou > 0:
-                print("IOU %s=%.3f" % (p['tagName'],iou), prev_box)
             if iou > 0.5:
-                print("Already notified %s with iou %f" % (p['tagName'], iou))
+                print("%s iou=%f" % (p['tagName'], iou), end=", ")
                 skip = True
                 break
-        if not skip:
+        if skip:
+            p['uniq'] = False
+        else:
+            p['uniq'] = True
             prev_class.append(p['boundingBox'])
             uniq_predictions.append(p)
 
@@ -207,6 +205,7 @@ def detect(cam, od_model, vehicle_model, config, st):
     if 'deer' in uniq_objects:
         st.deer_alert()
 
+    print("],", end=' ', flush=True)
     if len(uniq_objects):
         if cam.name == 'driveway':
             message = "%s in %s" % (",".join(detected_objects),cam.name)
