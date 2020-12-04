@@ -40,13 +40,13 @@ def notify(message, image, predictions, config, st):
         mode_priorities = {}
     priorities = config['priority']
     priority = None
-    has_package = False
     has_dog = False
     vehicles = list(filter(lambda p: p['tagName'] == 'vehicle' and p['uniq'] == True, predictions))
     has_vehicles = len(vehicles) > 0
     has_person  = len(list(filter(lambda p: p['tagName'] == 'person' and p['uniq'] == True, predictions))) > 0
     has_dog  = len(list(filter(lambda p: p['tagName'] == 'dog', predictions))) > 0
-    has_package  = len(list(filter(lambda p: p['tagName'] == 'package', predictions))) > 0
+    packages = list(filter(lambda p: p['tagName'] == 'package', predictions))
+    has_package = len(packages) > 0
     if has_vehicles:
         notify_vehicle = st.should_notify_vehicle()
     else:
@@ -123,6 +123,7 @@ def notify(message, image, predictions, config, st):
     cropped_image.save(output_bytes, 'jpeg')
     output_bytes.seek(0)
     if has_vehicles:
+        pprint(vehicles)
         if len(notify.license_plates) == 0:
             with open(config['detector']['license-plates']) as f:
                 notify.license_plates = json.load(f)
@@ -171,9 +172,16 @@ def notify(message, image, predictions, config, st):
             print('Failed to enrich via sighthound')
         output_bytes.seek(0)
 
-    packages = list(filter(lambda p: p['tagName'] == 'package', predictions))
-    for package in packages:
-        st.echo_speaks('Package delivered near {}'.format(package['camName']))
+    if has_package and priority >= 0:
+        if max(map(lambda x: x['probability'], packages)) > 0.9:
+            if len(packages) == 1:
+                st.echo_speaks('Package delivered near {}'.format(package['camName']))
+            else:
+                st.echo_speaks('{} packages delivered near {}'.format(len(packages), package['camName']))
+        else:
+            print("Not speaking package delivery because probability < 0.9")
+            if not has_dog:
+                priority = -3
 
     print("Sending Pushover message '{}'".format(message), flush=True)
     r = requests.post("https://api.pushover.net/1/messages.json", data = {

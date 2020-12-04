@@ -68,6 +68,9 @@
     ]
   },
   "west lawn":{
+    "deer":[
+      {"left": 0.29181562, "top": 0.19941913, "width": 0.04899344, "height": 0.07345963}
+    ],
     "person":[
       {"left": 0.94464372, "top": 0.87772514, "width": 0.03725578, "height": 0.12196665, "comment": "small retaining wall"}
     ]

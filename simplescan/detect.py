@@ -12,6 +12,7 @@ from requests.auth import HTTPDigestAuth
 from notify import notify
 from datetime import date,datetime,timedelta
 from PIL import UnidentifiedImageError
+from PIL import Image
 import traceback
 
 class Camera():
@@ -29,6 +30,7 @@ class Camera():
         self.capture_async = self.config.getboolean('async', False)
         self.prior_image = None
         self.prior_time = None
+        self.age = 0
 
     def capture(self):
         self.image = None
@@ -69,6 +71,7 @@ def detect(cam, od_model, vehicle_model, config, st):
     except OSError as e:
         print("%s=error:" % cam.name, sys.exc_info()[0])
         return 0
+    cam.age = cam.age + 1
     vehicle_predictions = []
     if cam.vehicle_check:
         vehicle_predictions = vehicle_model.predict_image(image)
@@ -82,14 +85,22 @@ def detect(cam, od_model, vehicle_model, config, st):
     else:
         print(cam.name, end="=")
         print("[" + ",".join( "{}:{:.2f}".format(p['tagName'],p['probability']) for p in predictions ), end=', ')
-    #  lots of false positives for cat and dog
-    #for label in ['dog','cat']:
-    #    if not label in cam.objects:
-    #        predictions = list(filter(lambda p: not(p['probability'] < .9 and p['tagName'] == label), predictions))
     add_centers(predictions)
     # remove road
+    road = []
     if cam.name in ['front lawn','driveway']:
-        predictions = list(filter(lambda p: not(p['center']['y'] < 0.25 and (p['tagName'] in ['vehicle','person'])), predictions))
+        not_road = []
+        for p in predictions:
+            road_y = 0.31 + 0.17 * p['center']['x']
+            if p['center']['y'] < road_y and (p['tagName'] in ['vehicle','person']):
+                p['road_y'] = road_y
+                road.append(p)
+            else:
+                not_road.append(p)
+        predictions = not_road
+        #if len(road) > 0:
+        #    print("objects on road: ", end="")
+        #    pprint(road)
     for p in predictions:
         if p['tagName'] in cam.excludes:
             for e in cam.excludes[p['tagName']]:
@@ -175,7 +186,9 @@ def detect(cam, od_model, vehicle_model, config, st):
             message = "%s in front of garage" % ",".join(detected_objects)
         else:
             message = "%s near %s" % (",".join(detected_objects),cam.name)
-        notify(message, image, predictions, config, st)
+        # on the first cycle, don't notify on any objects already in frame
+        if cam.age > 1:
+            notify(message, image, predictions, config, st)
         cam.objects = detected_objects
 
     return prediction_time
