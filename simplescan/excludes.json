@@ -51,6 +51,9 @@
     ]
   },
   "shed":{
+    "deer":[
+      {"left": 0.91489063, "top": 0.19800519, "width": 0.08663369, "height": 0.14008662, "comment": "flag"}
+    ],
     "package":[
       {"left": 0.90527523, "top": 0.14074589, "width": 0.06682512, "height": 0.15479457, "comment": "flag"},
       {"left": 0.91936919, "top": 0.18224468, "width": 0.07277787, "height": 0.18259084, "comment": "flag"},
@@ -69,6 +72,7 @@
   },
   "west lawn":{
     "deer":[
+      {"left": 0.31258841, "top": 0.19680347, "width": 0.03911986, "height": 0.07216462, "comment": "rock"},
       {"left": 0.29181562, "top": 0.19941913, "width": 0.04899344, "height": 0.07345963}
     ],
     "person":[

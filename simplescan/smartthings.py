@@ -68,7 +68,7 @@ class SmartThings(object):
         return r.content.decode("utf-8")
 
     def get_st_mode(self):
-        r = requests.get('http://raspberrypi-zerow.local:8282/mode')
+        r = requests.get('http://192.168.254.6:8282/mode')
         c = r.content.decode("utf-8")
         print("St mode={}".format(c))
         return c.lower()
