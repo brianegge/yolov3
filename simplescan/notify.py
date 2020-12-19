@@ -82,7 +82,7 @@ def notify(message, image, predictions, config, st):
                 priority = max(i, priority)
     # raise priority if dog is near package
     if has_package and has_dog:
-        priority = max(1, priority)
+        priority = 1
 
     # crop to area of interest
     width, height = image.size
@@ -175,9 +175,9 @@ def notify(message, image, predictions, config, st):
     if has_package and priority >= 0:
         if max(map(lambda x: x['probability'], packages)) > 0.9:
             if len(packages) == 1:
-                st.echo_speaks('Package delivered near {}'.format(package['camName']))
+                st.echo_speaks('Package delivered near {}'.format(packages[0]['camName']))
             else:
-                st.echo_speaks('{} packages delivered near {}'.format(len(packages), package['camName']))
+                st.echo_speaks('{} packages delivered near {}'.format(len(packages), packages[0]['camName']))
         else:
             print("Not speaking package delivery because probability < 0.9")
             if not has_dog:

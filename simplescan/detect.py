@@ -13,6 +13,7 @@ from notify import notify
 from datetime import date,datetime,timedelta
 from PIL import UnidentifiedImageError
 from PIL import Image
+import cv2
 import traceback
 
 class Camera():
@@ -39,15 +40,19 @@ class Camera():
                 break
             if 'file' in self.config:
                 self.is_file = True
-                raw_image = open(self.config['file'], "rb").read()
+                self.image = cv2.imread(self.config['file'])
             else:
-                r = self.session.get(self.config['uri'])
-                raw_image = r.content
-            try:
-                self.image = Image.open(BytesIO(raw_image))
-            except UnidentifiedImageError as e:
-                self.image = None
-                #print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
+                resp = self.session.get(self.config['uri'], stream=True).raw
+                try:
+                    image = np.asarray(bytearray(resp.read()), dtype="uint8")
+                    if len(image):
+                        self.image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+                    else:
+                        self.image = None
+                    # self.image = Image.open(BytesIO(raw_image))
+                except (cv2.error, UnidentifiedImageError) as e:
+                    self.image = None
+                    print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
         return self
     
 def add_centers(predictions):
@@ -62,7 +67,7 @@ def detect(cam, od_model, vehicle_model, config, st):
     threshold = config['detector'].getfloat('threshold')
     smartthings = config['smartthings']
     image = cam.image
-    if image == None:
+    if image is None:
         print("{}=[X]".format(cam.name), end=", ")
         return 0
     prediction_start = timer()
@@ -73,7 +78,7 @@ def detect(cam, od_model, vehicle_model, config, st):
         return 0
     cam.age = cam.age + 1
     vehicle_predictions = []
-    if cam.vehicle_check:
+    if cam.vehicle_check and vehicle_model is not None:
         vehicle_predictions = vehicle_model.predict_image(image)
         # include all vehicle predictions for now
         predictions += vehicle_predictions
@@ -116,7 +121,7 @@ def detect(cam, od_model, vehicle_model, config, st):
         if len( cam.objects ) > 0:
             print("  %s departed %s" % (",".join(cam.objects), cam.name))
             basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
-            image.save(basename + '.jpg')
+            cv2.imwrite(basename + '.jpg', image)
             cam.objects.clear()
         cam.prior_image = image
         cam.prior_time = datetime.now()
@@ -126,7 +131,7 @@ def detect(cam, od_model, vehicle_model, config, st):
     detected_objects = list(p['tagName'] for p in predictions)
     # Always open garage door, we can call this many times
     if smartthings:
-        if 'cat' in detected_objects and cam.name != 'garage':
+        if 'cat' in detected_objects and cam.name != 'garage' and 'crack_garage' in smartthings:
             print("Cracking open garage door for cat")
             r = requests.get(smartthings['crack_garage'])
             if r.json()['result'] != "OK":
@@ -156,21 +161,23 @@ def detect(cam, od_model, vehicle_model, config, st):
             prev_class.append(p['boundingBox'])
             uniq_predictions.append(p)
 
+    im_pil = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    im_pil = Image.fromarray(im_pil)
     if len(uniq_predictions):
         # don't save file if we're reading from a file
         if not cam.is_file:
-            if cam.prior_image:
+            if cam.prior_image is not None:
                 basename = os.path.join(save_dir,cam.prior_time.strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects) + "-prior")
-                cam.prior_image.save(basename + '.jpg')
+                cv2.imwrite(basename + '.jpg', cam.prior_image)
                 cam.prior_image = None
             basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
-            image.save(basename + '.jpg')
+            cv2.imwrite(basename + '.jpg', image)
             with open(basename + '.txt', 'w') as file:
                 file.write(json.dumps(predictions))
         for p in predictions:
-            draw_bbox(image, p, colors.get(p['tagName'], fallback='red'))
+            draw_bbox(im_pil, p, colors.get(p['tagName'], fallback='red'))
         if not cam.is_file:
-            image.save(basename + '-annotated.jpg')
+            im_pil.save(basename + '-annotated.jpg')
 
     uniq_objects = list(p['tagName'] for p in uniq_predictions)
 
@@ -186,9 +193,10 @@ def detect(cam, od_model, vehicle_model, config, st):
             message = "%s in front of garage" % ",".join(detected_objects)
         else:
             message = "%s near %s" % (",".join(detected_objects),cam.name)
-        # on the first cycle, don't notify on any objects already in frame
-        if cam.age > 1:
-            notify(message, image, predictions, config, st)
+        if cam.age > 2:
+            notify(message, im_pil, predictions, config, st)
+        else:
+            print("Skipping notifications until after warm up")
         cam.objects = detected_objects
 
     return prediction_time

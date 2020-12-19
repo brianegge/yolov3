@@ -11,6 +11,7 @@ from timeit import default_timer as timer
 from detect import detect,Camera
 from onnx_object_detection import ONNXRuntimeObjectDetection
 from object_detection_rt import ONNXTensorRTObjectDetection
+from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
 import asyncio
 import concurrent.futures
 from datetime import datetime
@@ -40,13 +41,18 @@ async def main(options):
             excludes = json.load(f)
 
     vehicle_model = None
-    if options.trt:
+    if 'yolov4' in detector_config['onnx-file']:
+        od_model = ONNXTensorRTv4ObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
+    elif options.trt:
         od_model = ONNXTensorRTObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
-        if 'vehicle-model' in detector_config:
-            vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
     else:
         od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
-        if 'vehicle-model' in detector_config:
+    if 'vehicle-model' in detector_config:
+        if 'yolov4' in detector_config['vehicle-model']:
+            vehicle_model = ONNXTensorRTv4ObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10))
+        elif options.trt:
+            vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
+        else:
             vehicle_model = ONNXRuntimeObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
     print("Loaded models")
    
@@ -85,9 +91,11 @@ async def main(options):
 
       end_time = timer()
       print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ), flush=True)
-      if prediction_time < 1.0:
+      if prediction_time < 0.1 * len(cams):
           print("Cameras appear down, waiting 30 seconds")
           time.sleep(30)
+      if 'once' in detector_config:
+          break
     
 if __name__ == '__main__':
     faulthandler.register(signal.SIGUSR1)

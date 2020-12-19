@@ -19,8 +19,8 @@ class ONNXTensorRTObjectDetection(ObjectDetection):
         super(ONNXTensorRTObjectDetection, self).__init__(labels, prob_threshold)
         # scale is the size in the input area relative to the base model size
         # so a scale of 4 means we must multiply the x and y sizes each by 2
-        self.model_width = 32 * int(688 * math.sqrt(scale) / 32);
-        self.model_height = 32 * int(384 * math.sqrt(scale) / 32);
+        self.model_width = 32 * int(688 * math.sqrt(scale) / 32); # 1344
+        self.model_height = 32 * int(384 * math.sqrt(scale) / 32); # 768
         engine_file_path = model_filename + ".engine"
         self.cfx = cuda.Device(0).make_context()
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
@@ -59,12 +59,15 @@ class ONNXTensorRTObjectDetection(ObjectDetection):
             print('Completed parsing of ONNX file')
             print('Building an engine from file {}; this may take a while...'.format(onnx_file_path))
             engine = builder.build_cuda_engine(network)
-            print("Completed creating Engine")
-            with open(engine_file_path, "wb") as f:
-                f.write(engine.serialize())
+            if engine:
+                print("Completed creating Engine")
+                with open(engine_file_path, "wb") as f:
+                    f.write(engine.serialize())
             return engine
 
     def preprocess(self, image):
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(image)
         image = image.convert("RGB") if image.mode != "RGB" else image
         image = image.resize((self.model_width, self.model_height))
         return image

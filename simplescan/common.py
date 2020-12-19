@@ -150,13 +150,20 @@ class HostDeviceMem(object):
         return self.__str__()
 
 # Allocates all buffers required for an engine, i.e. host/device inputs/outputs.
-def allocate_buffers(engine):
+def allocate_buffers(engine, batch_size=1):
     inputs = []
     outputs = []
     bindings = []
     stream = cuda.Stream()
     for binding in engine:
-        size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size
+
+        size = trt.volume(engine.get_binding_shape(binding)) * batch_size
+        dims = engine.get_binding_shape(binding)
+
+        # in case batch dimension is -1 (dynamic)
+        if dims[0] < 0:
+            size *= -1
+
         dtype = trt.nptype(engine.get_binding_dtype(binding))
         # Allocate host and device buffers
         host_mem = cuda.pagelocked_empty(size, dtype)
