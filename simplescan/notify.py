@@ -31,7 +31,7 @@ def edits2(word):
     "All edits that are two edits away from `word`."
     return (e2 for e1 in edits1(word) for e2 in edits1(e1))
 
-def notify(message, image, predictions, config, st):
+def notify(cam, message, image, predictions, config, st):
     mode = st.get_st_mode()
     mode_key = 'priority-%s' % mode
     if mode_key in config:
@@ -58,7 +58,12 @@ def notify(message, image, predictions, config, st):
     sound = 'pushover'
     for p in list(filter(lambda p: p['uniq'] == True, predictions)):
         tagName = p['tagName']
-        if tagName == 'person' and not notify_person:
+        if tagName == 'vehicle' and cam.name == 'front entry':
+            i = -3
+            # cars should not be possible here, unless in road
+        elif tagName == 'person' and cam.name == 'garage' and st.get_contactSensor_value('Basement Entry') == "opened":
+            i = -3
+        elif tagName == 'person' and not notify_person:
             i = -3
             # we are still outside, keep detection off
             st.suppress_notify_person()

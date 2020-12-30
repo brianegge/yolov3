@@ -49,7 +49,7 @@ async def main(options):
         od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
     if 'vehicle-model' in detector_config:
         if 'yolov4' in detector_config['vehicle-model']:
-            vehicle_model = ONNXTensorRTv4ObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10))
+            vehicle_model = ONNXTensorRTv4ObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), model_width=512, model_height=512)
         elif options.trt:
             vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
         else:

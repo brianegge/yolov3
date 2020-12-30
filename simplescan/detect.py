@@ -111,7 +111,7 @@ def detect(cam, od_model, vehicle_model, config, st):
             for e in cam.excludes[p['tagName']]:
                 iou = bb_intersection_over_union(e,p['boundingBox'])
                 if iou > 0.5:
-                    print("Static exclude {} at {}".format(p['tagName'],p['boundingBox']))
+                    print("Static exclude", end="")
                     p['ignore'] = True
     predictions = list(filter(lambda p: not('ignore' in p), predictions))
 
@@ -194,7 +194,7 @@ def detect(cam, od_model, vehicle_model, config, st):
         else:
             message = "%s near %s" % (",".join(detected_objects),cam.name)
         if cam.age > 2:
-            notify(message, im_pil, predictions, config, st)
+            notify(cam, message, im_pil, predictions, config, st)
         else:
             print("Skipping notifications until after warm up")
         cam.objects = detected_objects
