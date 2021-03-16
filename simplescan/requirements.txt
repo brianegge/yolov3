@@ -3,3 +3,5 @@ pysmartthings
 opencv-python
 colorhash
 filterpy
+sdnotify
+numpy==1.16.6

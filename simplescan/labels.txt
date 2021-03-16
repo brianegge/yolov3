@@ -1,6 +1,0 @@
-cat
-deer
-dog
-fox
-person
-raccoon

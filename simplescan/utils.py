@@ -1,4 +1,5 @@
 from PIL import ImageDraw,ImageFont,ImageColor
+from pprint import pprint
 
 def draw_bbox(image, p, color, label=None):
     w,h = image.size
@@ -12,6 +13,14 @@ def draw_bbox(image, p, color, label=None):
     if label:
         font = ImageFont.truetype("arial.ttf", size=52)
         draw.text( (w * bbox['left'], h * bbox['top'] - 52), text=label, fill=color, font=font)
+    del draw
+
+def draw_road(image, points):
+    w,h = image.size
+    xy = list(map(lambda t: (t[0]*w, t[1] * h), points))
+    draw = ImageDraw.Draw(image, 'RGBA')
+    fill = ImageColor.getrgb("yellow") + (128, )
+    draw.line(xy, fill=fill, width=4)
     del draw
 
 def bb_intersection_over_union(boxA, boxB):

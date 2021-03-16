@@ -1,8 +1,8 @@
 import os
 import sys
-from io import BytesIO
+from io import BytesIO,StringIO
 from object_detection import ObjectDetection
-from utils import bb_intersection_over_union,draw_bbox
+from utils import bb_intersection_over_union,draw_bbox,draw_road
 import numpy as np
 from pprint import pprint
 import json
@@ -35,24 +35,27 @@ class Camera():
 
     def capture(self):
         self.image = None
-        for _ in range(0,2):
+        for i in range(0,2):
             if not self.image is None:
                 break
             if 'file' in self.config:
                 self.is_file = True
                 self.image = cv2.imread(self.config['file'])
             else:
-                resp = self.session.get(self.config['uri'], stream=True).raw
                 try:
-                    image = np.asarray(bytearray(resp.read()), dtype="uint8")
-                    if len(image):
-                        self.image = cv2.imdecode(image, cv2.IMREAD_COLOR)
-                    else:
-                        self.image = None
-                    # self.image = Image.open(BytesIO(raw_image))
-                except (cv2.error, UnidentifiedImageError) as e:
+                    resp = self.session.get(self.config['uri'], timeout=15)
+                    #if resp.status_code != 200 and i == 1:
+                    #    pprint(resp.status_code)
+                    #    pprint(resp.headers)
+                    self.image = Image.open(BytesIO(resp.content))
+                    self.resized = self.image.resize( (1344, 768), Image.BILINEAR)
+                    if self.vehicle_check:
+                        self.resized2 = self.image.resize( (608, 608), Image.BILINEAR)
+                    self.error = None
+                except:
                     self.image = None
-                    print("%s=error:" % self.name, sys.exc_info()[0], end=" ")
+                    self.resized = None
+                    self.error = sys.exc_info()[0]
         return self
     
 def add_centers(predictions):
@@ -68,70 +71,93 @@ def detect(cam, od_model, vehicle_model, config, st):
     smartthings = config['smartthings']
     image = cam.image
     if image is None:
-        print("{}=[X]".format(cam.name), end=", ")
+        print("{}=[{}]".format(cam.name, cam.error), end=", ")
         return 0
     prediction_start = timer()
     try:
-        predictions = od_model.predict_image(image)
+        predictions = od_model.predict_image(cam.resized)
     except OSError as e:
         print("%s=error:" % cam.name, sys.exc_info()[0])
         return 0
     cam.age = cam.age + 1
     vehicle_predictions = []
     if cam.vehicle_check and vehicle_model is not None:
-        vehicle_predictions = vehicle_model.predict_image(image)
+        vehicle_predictions = vehicle_model.predict_image(cam.resized2)
         # include all vehicle predictions for now
         predictions += vehicle_predictions
     prediction_time = (timer() - prediction_start)
     # filter out lower predictions
     predictions = list(filter(lambda p: p['probability'] > config['thresholds'].getfloat(p['tagName'], threshold) or (p['tagName'] in cam.objects and p['probability'] > 0.4), predictions))
-    if len(predictions) == 0:
-        print('%s=[], ' % cam.name, end='')
-    else:
-        print(cam.name, end="=")
-        print("[" + ",".join( "{}:{:.2f}".format(p['tagName'],p['probability']) for p in predictions ), end=', ')
+    for p in predictions:
+        p['camName'] = cam.name
     add_centers(predictions)
     # remove road
-    road = []
-    if cam.name in ['front lawn','driveway']:
-        not_road = []
+    if cam.name in ['peach tree','driveway']:
         for p in predictions:
-            road_y = 0.31 + 0.17 * p['center']['x']
-            if p['center']['y'] < road_y and (p['tagName'] in ['vehicle','person']):
-                p['road_y'] = road_y
-                road.append(p)
+            x = p['center']['x']
+            if x < 0.651:
+                road_y = 0.31 + 0.038 * x
             else:
-                not_road.append(p)
-        predictions = not_road
-        #if len(road) > 0:
-        #    print("objects on road: ", end="")
-        #    pprint(road)
-    for p in predictions:
-        if p['tagName'] in cam.excludes:
-            for e in cam.excludes[p['tagName']]:
+                road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
+            p['road_y'] = road_y
+            if p['center']['y'] < road_y and (p['tagName'] in ['vehicle','person']):
+                p['ignore'] = 'road'
+    elif cam.name == 'garage-l':
+        for p in predictions:
+            if p['boundingBox']['top'] + p['boundingBox']['height'] < .18 and (p['tagName'] in ['vehicle','person']):
+                p['ignore'] = 'road'
+    elif cam.name == 'garage-r':
+        for p in predictions:
+            if p['tagName'] in ['vehicle']:
+                p['ignore'] = 'package cam'
+    elif cam.name in ['front entry']:
+        for p in filter(lambda p: p['tagName'] == 'package', predictions):
+            if p['center']['x'] < 0.178125:
+                p['ignore'] = 'in grass'
+    for p in filter(lambda p: 'ignore' not in p, predictions):
+        if "*" in cam.excludes:
+            for e in cam.excludes["*"]:
                 iou = bb_intersection_over_union(e,p['boundingBox'])
                 if iou > 0.5:
-                    print("Static exclude", end="")
-                    p['ignore'] = True
-    predictions = list(filter(lambda p: not('ignore' in p), predictions))
+                    p['ignore'] = e.get('comment', 'static')
+                    break
+        if p['tagName'] in cam.excludes:
+            for i,e in enumerate(cam.excludes[p['tagName']]):
+                iou = bb_intersection_over_union(e,p['boundingBox'])
+                if iou > 0.5:
+                    p['ignore'] = e.get('comment', 'static iou {}'.format(iou))
+                    break
+        if p['tagName'] == 'package' and cam.name == 'shed':
+            p['ignore'] = 'class for cam'
+    print('%s=[' % cam.name, end='')
+
+    def format_prediction(p):
+        if 'ignore' in p:
+            return "{}:{:.2f}:{}".format(p['tagName'], p['probability'], p['ignore'])
+        else:
+            return "{}:{:.2f}".format(p['tagName'], p['probability'])
+    print(",".join( format_prediction(p) for p in predictions ), end='')
+    valid_predictions = list(filter(lambda p: not('ignore' in p), predictions))
 
     save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
     os.makedirs(save_dir,exist_ok=True)
-    if len(predictions) == 0:
-        if len( cam.objects ) > 0:
-            print("  %s departed %s" % (",".join(cam.objects), cam.name))
-            basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
-            cv2.imwrite(basename + '.jpg', image)
+    if len(valid_predictions) == 0:
+        if len(list(filter(lambda p: p['tagName'] != 'dog' or p['camName'] == 'garage', cam.objects))):
+            print(" %s departed" % (",".join(cam.objects)), end="")
+            basename = os.path.join(save_dir, datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
+            if isinstance(image, Image.Image):
+                image.save(basename + '.jpg')
+            else:
+                cv2.imwrite(basename + '.jpg', image)
             cam.objects.clear()
         cam.prior_image = image
         cam.prior_time = datetime.now()
+        print("],", end=' ', flush=True)
         return prediction_time
-    for p in predictions:
-        p['camName'] = cam.name
-    detected_objects = list(p['tagName'] for p in predictions)
+    detected_objects = list(p['tagName'] for p in valid_predictions)
     # Always open garage door, we can call this many times
     if smartthings:
-        if 'cat' in detected_objects and cam.name != 'garage' and 'crack_garage' in smartthings:
+        if 'cat' in detected_objects and cam.name in ['shed','garage-l', 'garage-r'] and 'crack_garage' in smartthings:
             print("Cracking open garage door for cat")
             r = requests.get(smartthings['crack_garage'])
             if r.json()['result'] != "OK":
@@ -140,7 +166,7 @@ def detect(cam, od_model, vehicle_model, config, st):
 
     colors = config['colors']
     uniq_predictions = []
-    for p in predictions:
+    for p in valid_predictions:
         prev_class = cam.prev_predictions.setdefault(p['tagName'],[])
         prev_time = cam.prev_predictions.get(p['tagName'] + "-time", datetime.utcfromtimestamp(0))
         if datetime.now() - prev_time > timedelta(minutes=60) and len(prev_class) > 0: # clear if we haven't seen this class in 15 minutes on this camera
@@ -151,33 +177,30 @@ def detect(cam, od_model, vehicle_model, config, st):
         for prev_box in prev_class:
             iou = bb_intersection_over_union(prev_box,p['boundingBox'])
             if iou > 0.5:
-                print("%s iou=%f" % (p['tagName'], iou), end=", ")
+                print("%s prev-iou=%f" % (p['tagName'], iou), end=", ")
                 skip = True
                 break
         if skip:
-            p['uniq'] = False
+            p['ignore'] = 'existing'
         else:
-            p['uniq'] = True
             prev_class.append(p['boundingBox'])
             uniq_predictions.append(p)
 
-    im_pil = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    im_pil = Image.fromarray(im_pil)
-    if len(uniq_predictions):
-        # don't save file if we're reading from a file
-        if not cam.is_file:
-            if cam.prior_image is not None:
-                basename = os.path.join(save_dir,cam.prior_time.strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects) + "-prior")
-                cv2.imwrite(basename + '.jpg', cam.prior_image)
-                cam.prior_image = None
-            basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
-            cv2.imwrite(basename + '.jpg', image)
-            with open(basename + '.txt', 'w') as file:
-                file.write(json.dumps(predictions))
-        for p in predictions:
-            draw_bbox(im_pil, p, colors.get(p['tagName'], fallback='red'))
-        if not cam.is_file:
-            im_pil.save(basename + '-annotated.jpg')
+    if isinstance(image, Image.Image):
+        im_pil = image.copy() # for drawing on
+    else:
+        im_pil = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        im_pil = Image.fromarray(im_pil)
+    for p in predictions:
+        if 'ignore' in p:
+            color = 'grey'
+        else:
+            color = colors.get(p['tagName'], fallback='red')
+        draw_bbox(im_pil, p, color)
+    if cam.name in ['peach tree','driveway']:
+        draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
+    elif cam.name in ['garage-l']:
+        draw_road(im_pil, [(0, 0.18), (1.0, 0.18)])
 
     uniq_objects = list(p['tagName'] for p in uniq_predictions)
 
@@ -191,12 +214,37 @@ def detect(cam, od_model, vehicle_model, config, st):
             message = "%s in %s" % (",".join(detected_objects),cam.name)
         elif cam.name == 'shed':
             message = "%s in front of garage" % ",".join(detected_objects)
+        elif cam.name == 'garage-r':
+            message = "%s in front of left garage" % ",".join(detected_objects)
+        elif cam.name == 'garage-l':
+            message = "%s in front of right garage" % ",".join(detected_objects)
         else:
             message = "%s near %s" % (",".join(detected_objects),cam.name)
         if cam.age > 2:
-            notify(cam, message, im_pil, predictions, config, st)
+            priority = notify(cam, message, im_pil, valid_predictions, config, st)
         else:
             print("Skipping notifications until after warm up")
+            priority = 0
         cam.objects = detected_objects
+    else:
+        priority = -4
+
+    if priority > -3 and not cam.is_file:
+        # don't save file if we're reading from a file
+        if cam.prior_image is not None:
+            basename = os.path.join(save_dir,cam.prior_time.strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects) + "-prior")
+            if isinstance(cam.prior_image, Image.Image):
+                cam.prior_image.save(basename + '.jpg')
+            else:
+                cv2.imwrite(basename + '.jpg', cam.prior_image)
+            cam.prior_image = None
+        basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
+        if isinstance(image, Image.Image):
+            image.save(basename + '.jpg')
+        else:
+            cv2.imwrite(basename + '.jpg', image)
+        with open(basename + '.txt', 'w') as file:
+            file.write(json.dumps(predictions))
+        im_pil.save(basename + '-annotated.jpg')
 
     return prediction_time

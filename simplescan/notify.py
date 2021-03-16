@@ -15,7 +15,8 @@ import re
 
 #logging.basicConfig(level=logging.DEBUG)
 
-
+with open('license-plates.json') as f:
+    license_plates = json.load(f)
 
 def edits1(word):
     "All edits that are one edit away from `word`."
@@ -40,10 +41,11 @@ def notify(cam, message, image, predictions, config, st):
         mode_priorities = {}
     priorities = config['priority']
     priority = None
+    priority_type = None
     has_dog = False
-    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle' and p['uniq'] == True, predictions))
+    vehicles = list(filter(lambda p: p['tagName'] == 'vehicle' and not 'ignore' in p, predictions))
     has_vehicles = len(vehicles) > 0
-    has_person  = len(list(filter(lambda p: p['tagName'] == 'person' and p['uniq'] == True, predictions))) > 0
+    has_person  = len(list(filter(lambda p: p['tagName'] == 'person' and not 'ignore' in p, predictions))) > 0
     has_dog  = len(list(filter(lambda p: p['tagName'] == 'dog', predictions))) > 0
     packages = list(filter(lambda p: p['tagName'] == 'package', predictions))
     has_package = len(packages) > 0
@@ -56,38 +58,54 @@ def notify(cam, message, image, predictions, config, st):
     else:
         notify_person = False
     sound = 'pushover'
-    for p in list(filter(lambda p: p['uniq'] == True, predictions)):
+    for p in list(filter(lambda p: not 'ignore' in p, predictions)):
         tagName = p['tagName']
+        probability = p['probability']
+        i_type = None
         if tagName == 'vehicle' and cam.name == 'front entry':
             i = -3
+            i_type = 'vehicle rule'
             # cars should not be possible here, unless in road
-        elif tagName == 'person' and cam.name == 'garage' and st.get_contactSensor_value('Basement Entry') == "opened":
+        elif tagName == 'person' and cam.name == 'garage':
             i = -3
+            i_type = 'person in garage rule'
         elif tagName == 'person' and not notify_person:
-            i = -3
+            i = -2
             # we are still outside, keep detection off
             st.suppress_notify_person()
+            i_type = 'person detection off'
+        elif tagName == 'vehicle' and not notify_vehicle:
+            i = -2
+            i_type = 'vehicle detection off'
         elif tagName in mode_priorities:
             i = mode_priorities.getint(p['tagName'])
-            print('mode priority %s=%d' % (mode_key,i))
+            i_type = mode_key
         elif tagName in priorities:
             i = priorities.getint(p['tagName'])
-            print('config priority %a=%d' % (tagName,i))
+            i_type = 'class {}'.format(tagName)
         else:
-            print('default priority for %s' % tagName)
-            i = None
+            i_type = 'default'
+            i = 0
         if tagName in config['sounds']:
             sound = config['sounds'][tagName]
+        if tagName == 'dog' and p['camName'] == 'garage' and probability > 0.9 and not has_person:
+            i = 1
+            i_type = 'dog in garage rule'
         if i is not None:
-            if tagName == 'dog' and p['camName'] == 'garage' and not has_person:
-                priority = 1
             if priority is None:
                 priority = i
+                priority_type = i_type
             else:
                 priority = max(i, priority)
+                if i >= priority:
+                    priority_type = i_type
     # raise priority if dog is near package
     if has_package and has_dog:
         priority = 1
+        priority_rule = 'dog near package'
+    if priority is None:
+        priority = 0
+        priority_rule = 'default'
 
     # crop to area of interest
     width, height = image.size
@@ -112,40 +130,43 @@ def notify(cam, message, image, predictions, config, st):
     # print("Cropping to %d,%d,%d,%d" % crop_rectangle)
     cropped_image = image.crop(crop_rectangle)
 
-    if priority is None:
-        if has_vehicles and not notify_vehicle:
-            print("Ignoring vehicles right now")
-            priority = -2
-        else:
-            priority = 0
     if priority <= -3:
-        print('Ignoring "%s" with priority %d, mode %s' % (message,priority, mode) )
-        return
+        print('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
+        return priority
     else:
-        print('Notifying "%s" with priority %d, mode %s' % (message,priority, mode) )
-    # prepare post
-    output_bytes = BytesIO()
-    cropped_image.save(output_bytes, 'jpeg')
-    output_bytes.seek(0)
+        print('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
     if has_vehicles:
         pprint(vehicles)
-        if len(notify.license_plates) == 0:
-            with open(config['detector']['license-plates']) as f:
-                notify.license_plates = json.load(f)
+        st.turn_on_outside_lights()
+        left = max(0, min(p['boundingBox']['left'] - 0.05 for p in vehicles) * width)
+        right = min(width, max(p['boundingBox']['left'] + p['boundingBox']['width'] + 0.05 for p in vehicles) * width)
+        top = max(0, min(p['boundingBox']['top'] - 0.05 for p in vehicles) * height)
+        bottom = min(height, max(p['boundingBox']['top'] + p['boundingBox']['height'] + 0.05 for p in vehicles) * height)
+        crop_rectangle = (left, top, right, bottom)
+        print("Cropping vehicle to {}".format(crop_rectangle))
+        vehicle_image = cam.image.crop(crop_rectangle)
+        save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
+        save_vehicle = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + vehicles[0]['camName'] + "-" + "sighthound.jpg")
+        vehicle_image.save(save_vehicle)
+        vehicle_bytes = BytesIO()
+        vehicle_image.save(vehicle_bytes, 'jpeg')
+        vehicle_bytes.seek(0)
         try:
-            save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
             save_json = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + vehicles[0]['camName'] + "-" + "sighthound.txt")
-            enrichments = sighthound.enrich(output_bytes.read(), save_json)
+            enrichments = sighthound.enrich(vehicle_bytes.read(), save_json)
             owner = None
             make = None
             plate_name = None
+            if enrichments['count'] == 0:
+                # Don't announce if sighthound can't find a vehicle
+                notify_vehicle = False
             for plate in enrichments['plates']:
                 guesses = [plate['name']] + list(edits1(plate['name'])) + list(edits2(plate['name']))
                 for guess in guesses:
-                    if guess in notify.license_plates:
-                        owner = notify.license_plates[guess].get('owner')
-                        make = notify.license_plates[guess].get('make')
-                        if notify.license_plates[guess].get("announce", True) == False:
+                    if guess in license_plates:
+                        owner = license_plates[guess].get('owner')
+                        make = license_plates[guess].get('make')
+                        if license_plates[guess].get("announce", True) == False:
                             print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
                             return
                         if owner.lower() == "house cleaner":
@@ -175,19 +196,23 @@ def notify(cam, message, image, predictions, config, st):
         except:
             traceback.print_exc(file=sys.stdout)
             print('Failed to enrich via sighthound')
-        output_bytes.seek(0)
 
     if has_package and priority >= 0:
-        if max(map(lambda x: x['probability'], packages)) > 0.9:
+        prob = max(map(lambda x: x['probability'], packages))
+        if prob > 0.9:
             if len(packages) == 1:
                 st.echo_speaks('Package delivered near {}'.format(packages[0]['camName']))
             else:
                 st.echo_speaks('{} packages delivered near {}'.format(len(packages), packages[0]['camName']))
         else:
-            print("Not speaking package delivery because probability < 0.9")
+            print("Not speaking package delivery because probability {} < 0.9".format(prob))
             if not has_dog:
                 priority = -3
 
+    # prepare post
+    output_bytes = BytesIO()
+    cropped_image.save(output_bytes, 'jpeg')
+    output_bytes.seek(0)
     print("Sending Pushover message '{}'".format(message), flush=True)
     r = requests.post("https://api.pushover.net/1/messages.json", data = {
       "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
@@ -201,5 +226,5 @@ def notify(cam, message, image, predictions, config, st):
     })
     if r.status_code != 200:
         pprint(r)
-
-notify.license_plates = {}
+        pprint(r.headers)
+    return priority

@@ -117,7 +117,7 @@ def enrich(image_bytes, save_json):
             plates.append(plate)
     if message == "":
         message = "Unidentified vehicle"
-    return {'message':message,'plates':plates}
+    return {'message':message,'plates':plates,'count':len(result['objects'])}
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:

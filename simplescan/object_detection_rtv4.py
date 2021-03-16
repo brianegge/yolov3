@@ -66,10 +66,17 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                     f.write(engine.serialize())
             return engine
 
-    def preprocess(self, image):
-        opencv_image = image
-        resized = cv2.resize(opencv_image, (self.model_width, self.model_height), interpolation=cv2.INTER_LINEAR)
-        img_in = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+    def preprocess(self, pil_image):
+        #opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        #resized = cv2.resize(opencv_image, (self.model_width, self.model_height), interpolation=cv2.INTER_LINEAR)
+        #img_in = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+        if pil_image.size != (self.model_width, self.model_height):
+            print("Resizing from {} to {}".format(pil_image.size, (self.model_width, self.model_height)))
+            resized = pil_image.resize( (self.model_width, self.model_height), PIL.Image.BILINEAR)
+            raise
+        else:
+            resized = pil_image
+        img_in = np.array(resized)
         img_in = np.transpose(img_in, (2, 0, 1)).astype(np.float32)
         img_in = np.expand_dims(img_in, axis=0)
         img_in /= 255.0

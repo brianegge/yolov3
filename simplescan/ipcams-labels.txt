@@ -3,4 +3,5 @@ deer
 dog
 fox
 person
+rabbit
 raccoon

@@ -5,6 +5,9 @@
     ]
   },
   "driveway":{
+    "package":[
+      {"left": 0.66223913, "top": 0.3062509, "width": 0.02949703, "height": 0.06653252}
+    ],
     "vehicle":[
       {"left": 0.0, "top": 0.0, "width": 1.0, "height": 0.1, "comment": "road"}
     ]
@@ -33,25 +36,52 @@
     ],
     "person":[
       {"left": 0.04538133, "top": 0.40441977, "width": 0.02591759, "height": 0.06950566, "comment": "septic conduit"},
+      {"left": 0.03967356, "top": 0.34076139, "width": 0.07267255, "height": 0.1341379,  "comment": "septic cover"},
       {"left": 0.03952874, "top": 0.38616025, "width": 0.02464007, "height": 0.10033245},
       {"left": 0.79617983, "top": 0.24567732, "width": 0.01620942, "height": 0.10276258, "comment": "christmas light"}
     ]
   },
   "front lawn":{
-    "dog":[
-      {"left": 0.72527838, "top": 0.50414741, "width": 0.03108478, "height": 0.05646551, "comment": "septic conduit"}
-    ],
-    "person":[
-      {"left": 0.725214,   "top": 0.51207882, "width": 0.03340173, "height": 0.05302471, "comment": "septic conduit"}
-    ]
   },
   "garage":{
-    "dog":[
-      {"left": 0.82881455, "top": -0.00288204, "width": 0.05070711, "height": 0.05121046}
+  },
+  "garage-l":{
+    "vehicle":[
+      {"left": 0.89860886, "top": 0.11809763, "width": 0.0495972, "height": 0.06227928, "comment": "neighbor"},
+      {"left": 0.89849877, "top": 0.1172771,  "width": 0.04804689,"height": 0.06563167, "comment": "neighbor"},
+      {"left": 0.91756076, "top": 0.1145454, "width": 0.03889191, "height": 0.06984442, "comment": "neighbor"}
+    ]
+  },
+  "garage-r":{
+    "vehicle":[
+      {"left": 0.12908711, "top": 0.03981923, "width": 0.045368, "height": 0.06678408, "comment": "neighbor"}
+    ]
+  },
+  "peach tree":{
+    "person":[
+      {"left": 0.15543739, "top": 0.55956864, "width": 0.04865272, "height": 0.16165745, "comment": "statue"}
+    ]
+  },
+  "play":{
+    "person":[
+      {"left": 0.21320675, "top": 0.34588182, "width": 0.01264247, "height": 0.04102972, "comment": "stump"}
     ]
   },
   "shed":{
+    "*":[
+      {"left": 0.89283937, "top": 0.19845565, "width": 0.11140507, "height": 0.09144987, "comment": "flag"},
+      {"left": 0.92471701, "top": 0.28872967, "width": 0.06431246, "height": 0.11986426, "comment": "flag"},
+      {"left": 0.929331, "top": 0.1936112, "width": 0.07196981, "height": 0.13607568, "comment": "flag"},
+      {"left": 0.93530309, "top": 0.14810221, "width": 0.05278605, "height": 0.15373553, "comment": "flag"},
+      {"left": 0.94587123, "top": 0.30221909, "width": 0.05300927, "height": 0.12831873, "comment": "flag"},
+      {"left": 0.94785255, "top": 0.23425871, "width": 0.0487169, "height": 0.10016865, "comment": "flag"},
+      {"left": 0.96390152, "top": 0.16853981, "width": 0.0364393,  "height": 0.06815746, "comment": "flag"},
+      {"left": 0.96460426, "top": 0.27526101, "width": 0.0341922, "height": 0.18981925, "comment": "flag"},
+      {"left": 0.97412813, "top": 0.27830115, "width": 0.02446282, "height": 0.12667426, "comment": "flag"},
+      {"left": 0.97831666, "top": 0.30344808, "width": 0.02267027, "height": 0.20027733, "comment": "flag"}
+    ],
     "deer":[
+      {"left": 0.93272889, "top": 0.32157034, "width": 0.04982305, "height": 0.13300359, "comment": "flag"},
       {"left": 0.91489063, "top": 0.19800519, "width": 0.08663369, "height": 0.14008662, "comment": "flag"},
       {"left": 0.89493436, "top": 0.2212345, "width": 0.10818166, "height": 0.17794698}
     ],
@@ -73,24 +103,14 @@
     ]
   },
   "swing":{
+    "*":[
+      {"left": 0.65689486, "top": 0.19388077, "width": 0.01340389, "height": 0.05450207, "comment": "wood splitter"}
+    ],
     "deer":[
-      {"left": 0.31592488, "top": 0.52792343, "width": 0.04299881, "height": 0.06503298},
-      {"left": 0.86097884, "top": 0.54474223, "width": 0.02638113, "height": 0.05948335, "comment": "ash tree wood"}
     ],
     "person":[
-      {"left": 0.66081303, "top": 0.29454422, "width": 0.02547032, "height": 0.08708927, "comment": "wood splitter"},
-      {"left": 0.58958811, "top": 0.2527009,  "width": 0.00739396, "height": 0.05788073, "comment": "lyra hoop"},
-      {"left": 0.58483672, "top": 0.1972307,  "width": 0.01423258, "height": 0.09009656, "comment": "lyra strap"}
     ]
   },
   "west lawn":{
-    "deer":[
-      {"left": 0.31258841, "top": 0.19680347, "width": 0.03911986, "height": 0.07216462, "comment": "rock"},
-      {"left": 0.29181562, "top": 0.19941913, "width": 0.04899344, "height": 0.07345963}
-    ],
-    "person":[
-      {"left": 0.94464372, "top": 0.87772514, "width": 0.03725578, "height": 0.12196665, "comment": "small retaining wall"},
-      {"left": 0.58205229, "top": 0.20754777, "width": 0.01347733, "height": 0.05791242, "comment": "lyra strap"}
-    ]
   }
 }

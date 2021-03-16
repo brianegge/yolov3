@@ -20,6 +20,7 @@ import faulthandler, signal
 import argparse
 import json
 import time
+import sdnotify
 from smartthings import SmartThings
 
 async def main(options):
@@ -40,6 +41,8 @@ async def main(options):
         with open(detector_config['excludes-file']) as f:
             excludes = json.load(f)
 
+    sd = sdnotify.SystemdNotifier()
+    sd.notify("STATUS=Loading main model")
     vehicle_model = None
     if 'yolov4' in detector_config['onnx-file']:
         od_model = ONNXTensorRTv4ObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
@@ -48,13 +51,14 @@ async def main(options):
     else:
         od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
     if 'vehicle-model' in detector_config:
+        sd.notify("STATUS=Loading vehicle/packages model")
         if 'yolov4' in detector_config['vehicle-model']:
-            vehicle_model = ONNXTensorRTv4ObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), model_width=512, model_height=512)
+            vehicle_model = ONNXTensorRTv4ObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), model_width=608, model_height=608)
         elif options.trt:
             vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
         else:
             vehicle_model = ONNXRuntimeObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
-    print("Loaded models")
+    sd.notify("STATUS=Loaded models")
    
     cams=[]
     i = 0
@@ -65,7 +69,10 @@ async def main(options):
     async_pool = concurrent.futures.ThreadPoolExecutor()
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     
+    sd.notify("READY=1")
+    sd.notify("STATUS=Running")
     while True:
+      sd.notify("WATCHDOG=1")
       start_time = timer()
       prediction_time = 0.0
       capture_futures = []
