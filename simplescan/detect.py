@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 from io import BytesIO,StringIO
 from object_detection import ObjectDetection
@@ -32,30 +33,43 @@ class Camera():
         self.prior_image = None
         self.prior_time = None
         self.age = 0
+        self.fails = 0
+        self.skip = 0
 
     def capture(self):
         self.image = None
-        for i in range(0,2):
-            if not self.image is None:
-                break
-            if 'file' in self.config:
-                self.is_file = True
-                self.image = cv2.imread(self.config['file'])
-            else:
-                try:
-                    resp = self.session.get(self.config['uri'], timeout=15)
-                    #if resp.status_code != 200 and i == 1:
-                    #    pprint(resp.status_code)
-                    #    pprint(resp.headers)
-                    self.image = Image.open(BytesIO(resp.content))
-                    self.resized = self.image.resize( (1344, 768), Image.BILINEAR)
-                    if self.vehicle_check:
-                        self.resized2 = self.image.resize( (608, 608), Image.BILINEAR)
-                    self.error = None
-                except:
-                    self.image = None
-                    self.resized = None
-                    self.error = sys.exc_info()[0]
+        self.resized = None
+        self.resized2 = None
+        if self.skip > 0:
+            self.error = 'skip'
+            self.skip -= 1
+            return self
+        if 'file' in self.config:
+            self.is_file = True
+            self.image = cv2.imread(self.config['file'])
+        else:
+            try:
+                resp = self.session.get(self.config['uri'], timeout=15, stream=True).raw
+                bytes = np.asarray(bytearray(resp.read()), dtype="uint8")
+                if len(bytes) == 0:
+                    self.error = 'empty'
+                    return self
+                self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
+                if self.vehicle_check:
+                    self.resized2 = cv2.resize(self.image, (608, 608))
+                hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
+                sum = np.sum(hsv[:,:,0])
+                if sum == 0:
+                    self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+                self.resized = cv2.resize(self.image, (1344, 768))
+                self.error = None
+                self.fails = 0
+            except:
+                self.image = None
+                self.resized = None
+                self.skip = 2 ** self.fails
+                self.fails += 1
+                self.error = sys.exc_info()[0]
         return self
     
 def add_centers(predictions):
@@ -66,19 +80,22 @@ def add_centers(predictions):
         center['x'] = bbox['left'] + bbox['width'] / 2.0
         center['y'] = bbox['top'] + bbox['height'] / 2.0
 
-def detect(cam, od_model, vehicle_model, config, st):
+def detect(cam, color_model, grey_model, vehicle_model, config, st):
     threshold = config['detector'].getfloat('threshold')
     smartthings = config['smartthings']
     image = cam.image
     if image is None:
-        print("{}=[{}]".format(cam.name, cam.error), end=", ")
-        return 0
+        return 0,"{}=[{}]".format(cam.name, cam.error)
     prediction_start = timer()
     try:
-        predictions = od_model.predict_image(cam.resized)
+        if len(cam.resized.shape) == 3:
+            predictions = color_model.predict_image(cam.resized)
+        elif len(cam.resized.shape) == 2:
+            predictions = grey_model.predict_image(cam.resized)
+        else:
+            return 0,"Unknown image shape {}".format(cam.resized.shape)
     except OSError as e:
-        print("%s=error:" % cam.name, sys.exc_info()[0])
-        return 0
+        return 0,"{}=error:{}".format(cam.name, sys.exc_info()[0])
     cam.age = cam.age + 1
     vehicle_predictions = []
     if cam.vehicle_check and vehicle_model is not None:
@@ -129,20 +146,13 @@ def detect(cam, od_model, vehicle_model, config, st):
                     break
         if p['tagName'] == 'package' and cam.name == 'shed':
             p['ignore'] = 'class for cam'
-    print('%s=[' % cam.name, end='')
 
-    def format_prediction(p):
-        if 'ignore' in p:
-            return "{}:{:.2f}:{}".format(p['tagName'], p['probability'], p['ignore'])
-        else:
-            return "{}:{:.2f}".format(p['tagName'], p['probability'])
-    print(",".join( format_prediction(p) for p in predictions ), end='')
     valid_predictions = list(filter(lambda p: not('ignore' in p), predictions))
 
     save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
     os.makedirs(save_dir,exist_ok=True)
     if len(valid_predictions) == 0:
-        if len(list(filter(lambda p: p['tagName'] != 'dog' or p['camName'] == 'garage', cam.objects))):
+        if len(list(filter(lambda p: p != 'dog', cam.objects))):
             print(" %s departed" % (",".join(cam.objects)), end="")
             basename = os.path.join(save_dir, datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
             if isinstance(image, Image.Image):
@@ -152,8 +162,6 @@ def detect(cam, od_model, vehicle_model, config, st):
             cam.objects.clear()
         cam.prior_image = image
         cam.prior_time = datetime.now()
-        print("],", end=' ', flush=True)
-        return prediction_time
     detected_objects = list(p['tagName'] for p in valid_predictions)
     # Always open garage door, we can call this many times
     if smartthings:
@@ -177,30 +185,30 @@ def detect(cam, od_model, vehicle_model, config, st):
         for prev_box in prev_class:
             iou = bb_intersection_over_union(prev_box,p['boundingBox'])
             if iou > 0.5:
-                print("%s prev-iou=%f" % (p['tagName'], iou), end=", ")
+                p['ignore'] = "prev-iou={:.2f}".format(iou)
                 skip = True
                 break
-        if skip:
-            p['ignore'] = 'existing'
-        else:
+        if not skip:
             prev_class.append(p['boundingBox'])
             uniq_predictions.append(p)
 
-    if isinstance(image, Image.Image):
-        im_pil = image.copy() # for drawing on
-    else:
-        im_pil = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        im_pil = Image.fromarray(im_pil)
-    for p in predictions:
-        if 'ignore' in p:
-            color = 'grey'
+    if len(valid_predictions) >= 0:
+        if isinstance(image, Image.Image):
+            im_pil = image.copy() # for drawing on
         else:
+            im_pil = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            im_pil = Image.fromarray(im_pil)
+        for p in predictions:
+            if 'ignore' in p:
+                width = 2
+            else:
+                width = 4
             color = colors.get(p['tagName'], fallback='red')
-        draw_bbox(im_pil, p, color)
-    if cam.name in ['peach tree','driveway']:
-        draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
-    elif cam.name in ['garage-l']:
-        draw_road(im_pil, [(0, 0.18), (1.0, 0.18)])
+            draw_bbox(im_pil, p, color, width=width)
+        if cam.name in ['peach tree','driveway']:
+            draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
+        elif cam.name in ['garage-l']:
+            draw_road(im_pil, [(0, 0.18), (1.0, 0.18)])
 
     uniq_objects = list(p['tagName'] for p in uniq_predictions)
 
@@ -208,7 +216,6 @@ def detect(cam, od_model, vehicle_model, config, st):
     if 'deer' in uniq_objects:
         st.deer_alert()
 
-    print("],", end=' ', flush=True)
     if len(uniq_objects):
         if cam.name == 'driveway':
             message = "%s in %s" % (",".join(detected_objects),cam.name)
@@ -247,4 +254,9 @@ def detect(cam, od_model, vehicle_model, config, st):
             file.write(json.dumps(predictions))
         im_pil.save(basename + '-annotated.jpg')
 
-    return prediction_time
+    def format_prediction(p):
+        if 'ignore' in p:
+            return "{}:{:.2f}:{}".format(p['tagName'], p['probability'], p['ignore'])
+        else:
+            return "{}:{:.2f}:p{}".format(p['tagName'], p['probability'], p.get('priority','?'))
+    return prediction_time, '{}=['.format(cam.name) + ",".join( format_prediction(p) for p in predictions ) + ']'

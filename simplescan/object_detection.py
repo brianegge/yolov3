@@ -6,6 +6,7 @@
 import numpy as np
 import math
 from pprint import pprint
+import time
 
 
 class ObjectDetection(object):
@@ -124,8 +125,12 @@ class ObjectDetection(object):
         return (boxes, class_probs)
 
     def predict_image(self, image):
+        start = time.time()
         inputs = self.preprocess(image)
+        #print("Preprocess={}".format(time.time() - start))
+        start = time.time()
         prediction_outputs = self.predict(inputs)
+        #print("Predict={}".format(time.time() - start))
         return self.postprocess(prediction_outputs)
 
     def preprocess(self, image):

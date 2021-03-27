@@ -49,7 +49,8 @@
     "vehicle":[
       {"left": 0.89860886, "top": 0.11809763, "width": 0.0495972, "height": 0.06227928, "comment": "neighbor"},
       {"left": 0.89849877, "top": 0.1172771,  "width": 0.04804689,"height": 0.06563167, "comment": "neighbor"},
-      {"left": 0.91756076, "top": 0.1145454, "width": 0.03889191, "height": 0.06984442, "comment": "neighbor"}
+      {"left": 0.91756076, "top": 0.1145454, "width": 0.03889191, "height": 0.06984442, "comment": "neighbor"},
+      {"left": 0.92645717, "top": 0.14034702, "width": 0.0356757, "height": 0.05823381, "comment": "neighbor"}
     ]
   },
   "garage-r":{

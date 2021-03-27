@@ -4,8 +4,8 @@ set -o errexit
 
 script_dir=$(cd $(dirname $0); pwd)
 cd $script_dir
-cfg=/home/egge/gdrive/dev/packages/packages-yolov4-608-tiny-detector.cfg
-weights=/home/egge/gdrive/dev/packages/packages-yolov4-608-tiny-detector_best.weights
+cfg=/home/egge/gdrive/dev/packages/packages-yolov4-608-3-tiny-detector.cfg
+weights=/home/egge/gdrive/dev/packages/packages-yolov4-608-3-tiny-detector_best.weights
 labels=/home/egge/gdrive/dev/packages/obj.names
 onnx=/home/egge/detector/simplescan/vehicles_yolov4.onnx
 
@@ -20,10 +20,10 @@ then
   echo "Updated $onnx"
 fi
 
-cfg=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-tiny-detector.cfg
-weights=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-tiny-detector_best.weights
+cfg=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-3-tiny-detector.cfg
+weights=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-3-tiny-detector_best.weights
 labels=/home/egge/gdrive/dev/ipcams/obj.names
-onnx=/home/egge/detector/simplescan/ipcams_yolov4.onnx
+onnx=/home/egge/detector/simplescan/ipcams_color_yolov4.onnx
 
 if [ $weights -nt $onnx ]
 then
@@ -31,6 +31,17 @@ then
   python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=768/' -e 's/^width=.*/width=1344/' $cfg) $weights $onnx
   [ -e ${onnx}.engine ] && rm ${onnx}.engine
   cp -pv $labels /home/egge/detector/simplescan/ipcams-labels.txt
+  echo "Updated $onnx"
+fi
+
+cfg=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-1-tiny-detector.cfg
+weights=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-1-tiny-detector_best.weights
+onnx=/home/egge/detector/simplescan/ipcams_grey_yolov4.onnx
+if [ $weights -nt $onnx ]
+then
+  echo "Updating $onnx"
+  python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=768/' -e 's/^width=.*/width=1344/' $cfg) $weights $onnx
+  [ -e ${onnx}.engine ] && rm ${onnx}.engine
   echo "Updated $onnx"
 fi
 echo sudo systemctl restart aicam

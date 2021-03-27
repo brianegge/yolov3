@@ -12,16 +12,17 @@ import pycuda.autoinit
 import time
 from pprint import pprint
 import math
-import PIL
+from PIL import Image
 
 TRT_LOGGER = trt.Logger()
 
 class ONNXTensorRTv4ObjectDetection(ObjectDetection):
     """Object Detection class for ONNX Runtime"""
-    def __init__(self, model_filename, labels, prob_threshold=0.10, model_height=768, model_width=1344):
+    def __init__(self, model_filename, labels, prob_threshold=0.10, model_height=768, model_width=1344, channels=3):
         super(ONNXTensorRTv4ObjectDetection, self).__init__(labels, prob_threshold)
         self.model_width = model_width
         self.model_height = model_height
+        self.channels = channels
         engine_file_path = model_filename + ".engine"
         self.cfx = cuda.Device(0).make_context()
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
@@ -32,13 +33,13 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                 self.engine = runtime.deserialize_cuda_engine(f.read())
         else:
             print("Compiling model {}".format(os.path.basename(model_filename)))
-            self.engine = self.get_engine(model_filename, engine_file_path)
+            self.engine = self.get_engine(model_filename, engine_file_path, channels)
         self.is_fp16 = False # network.get_input(0).type == 'tensor(float16)'
         self.input_name = 'input' # network.get_input(0).name
         self.context = self.engine.create_execution_context()
-        self.context.set_binding_shape(0, (1, 3, model_height, model_width))
+        self.context.set_binding_shape(0, (1, channels, model_height, model_width))
 
-    def get_engine(self, onnx_file_path, engine_file_path=""):
+    def get_engine(self, onnx_file_path, engine_file_path="", channels=3):
         """Takes an ONNX file and creates a TensorRT engine to run inference with"""
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network(common.EXPLICIT_BATCH) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
             builder.max_workspace_size = 1 << 28 # 256MiB
@@ -55,8 +56,8 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                     for error in range(parser.num_errors):
                         print (parser.get_error(error))
                     return None
-            print("Creating model with shape {},{}".format(self.model_height,self.model_width))
-            network.get_input(0).shape = [1, 3, self.model_height, self.model_width] # NCWH
+            print("Creating model with shape {},{},{}".format(channels, self.model_height,self.model_width))
+            network.get_input(0).shape = [1, channels, self.model_height, self.model_width] # NCWH
             print('Completed parsing of ONNX file')
             print('Building an engine from file {}; this may take a while...'.format(onnx_file_path))
             engine = builder.build_cuda_engine(network)
@@ -66,18 +67,24 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                     f.write(engine.serialize())
             return engine
 
-    def preprocess(self, pil_image):
+    def preprocess(self, image):
         #opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         #resized = cv2.resize(opencv_image, (self.model_width, self.model_height), interpolation=cv2.INTER_LINEAR)
         #img_in = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-        if pil_image.size != (self.model_width, self.model_height):
-            print("Resizing from {} to {}".format(pil_image.size, (self.model_width, self.model_height)))
-            resized = pil_image.resize( (self.model_width, self.model_height), PIL.Image.BILINEAR)
-            raise
+        if isinstance(image, Image.Image):
+            if image.size != (self.model_width, self.model_height):
+                print("Resizing from {} to {}".format(pil_image.size, (self.model_width, self.model_height)))
+                image = image.resize( (self.model_width, self.model_height), Image.BILINEAR)
+                raise
+        img_in = np.array(image)
+        if self.channels == 3:
+            # channels first
+            img_in = np.transpose(img_in, (2, 0, 1)).astype(np.float32)
         else:
-            resized = pil_image
-        img_in = np.array(resized)
-        img_in = np.transpose(img_in, (2, 0, 1)).astype(np.float32)
+            img_in = img_in.astype(np.float32)
+            # add channel dimension
+            img_in = np.expand_dims(img_in, axis=0)
+        # add batch dimension
         img_in = np.expand_dims(img_in, axis=0)
         img_in /= 255.0
         img_in = np.ascontiguousarray(img_in)
@@ -86,7 +93,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
 
     def predict(self, preprocessed_image):
         np_image = preprocessed_image
-        assert (1,3,self.model_height,self.model_width) == np_image.shape, "Image must be resized to model shape"
+        assert (1,self.channels,self.model_height,self.model_width) == np_image.shape, "Image must be resized to model shape"
 
         if self.is_fp16:
             np_image = np_image.astype(np.float16)

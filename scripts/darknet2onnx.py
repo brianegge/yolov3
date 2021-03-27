@@ -18,7 +18,12 @@ def transform_to_onnx(cfgfile, weightfile, onnx_file_name):
     batch_size=1
     input_names = ["input"]
     output_names = ['boxes', 'confs']
-    x = torch.randn((batch_size, 3, model.height, model.width), requires_grad=True)
+    if 'grey' in onnx_file_name:
+        channels = 1
+    else:
+        channels = 3
+    print('channels={}'.format(channels))
+    x = torch.randn((batch_size, channels, model.height, model.width), requires_grad=True)
     torch.onnx.export(model,
                       x,
                       onnx_file_name,

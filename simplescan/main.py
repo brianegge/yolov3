@@ -44,12 +44,13 @@ async def main(options):
     sd = sdnotify.SystemdNotifier()
     sd.notify("STATUS=Loading main model")
     vehicle_model = None
-    if 'yolov4' in detector_config['onnx-file']:
-        od_model = ONNXTensorRTv4ObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10))
+    if 'yolov4' in detector_config['color-model']:
+        color_model = ONNXTensorRTv4ObjectDetection(detector_config['color-model'], labels, detector_config.getfloat('prob_threshold', 0.10))
+        grey_model = ONNXTensorRTv4ObjectDetection(detector_config['grey-model'], labels, detector_config.getfloat('prob_threshold', 0.10), channels=1)
     elif options.trt:
-        od_model = ONNXTensorRTObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
+        color_model = ONNXTensorRTObjectDetection(detector_config['color-model'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
     else:
-        od_model = ONNXRuntimeObjectDetection(detector_config['onnx-file'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
+        color_model = ONNXRuntimeObjectDetection(detector_config['color-model'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
     if 'vehicle-model' in detector_config:
         sd.notify("STATUS=Loading vehicle/packages model")
         if 'yolov4' in detector_config['vehicle-model']:
@@ -66,7 +67,10 @@ async def main(options):
         cams.append(Camera(config["cam%d" % i],excludes.get(config["cam%d" % i]['name'], {})))
         i += 1
     print("Configured %i cams" % i)
-    async_pool = concurrent.futures.ThreadPoolExecutor()
+    async_cameras = len(list(filter(lambda cam: cam.capture_async, cams)))
+    #async_cameras = 4
+    print("%i async workers" % async_cameras)
+    async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=async_cameras)
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     
     sd.notify("READY=1")
@@ -76,27 +80,38 @@ async def main(options):
       start_time = timer()
       prediction_time = 0.0
       capture_futures = []
+      messages=[]
       print("Checking ", end="")
-      for cam in cams:
-          try:
-              if cam.capture_async:
-                  capture_futures.append(async_pool.submit(cam.capture))
-              else:
-                  capture_futures.append(sync_pool.submit(cam.capture))
-          except KeyboardInterrupt:
-              return
-          except requests.exceptions.ConnectionError:
-              print("cam:%s requests.exceptions.ConnectionError:" % cam.name, sys.exc_info()[0] )
+      if options.sync:
+          for cam in cams:
+              cam.capture()
+              p,m = detect(cam, color_model, grey_model, vehicle_model, config, st)
+              prediction_time += p
+              messages.append(m)
+      else:
+          for cam in cams:
+              try:
+                  if cam.capture_async and not options.sync:
+                      capture_futures.append(async_pool.submit(cam.capture))
+                  else:
+                      capture_futures.append(sync_pool.submit(cam.capture))
+              except KeyboardInterrupt:
+                  return
+              except requests.exceptions.ConnectionError:
+                  print("cam:%s requests.exceptions.ConnectionError:" % cam.name, sys.exc_info()[0] )
 
-      for f in concurrent.futures.as_completed(capture_futures, timeout=90):
-          try:
-              cam = f.result()
-              if cam:
-                  prediction_time += detect(cam, od_model, vehicle_model, config, st)
-          except KeyboardInterrupt:
-              return
+          for f in concurrent.futures.as_completed(capture_futures, timeout=180):
+              try:
+                  cam = f.result()
+                  if cam:
+                      p,m = detect(cam, color_model, grey_model, vehicle_model, config, st)
+                      prediction_time += p
+                      messages.append(m)
+              except KeyboardInterrupt:
+                  return
 
       end_time = timer()
+      print(",".join(sorted(messages)), end="")
       print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ), flush=True)
       if prediction_time < 0.1 * len(cams):
           print("Cameras appear down, waiting 30 seconds")

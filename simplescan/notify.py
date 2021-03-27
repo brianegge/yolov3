@@ -58,7 +58,9 @@ def notify(cam, message, image, predictions, config, st):
     else:
         notify_person = False
     sound = 'pushover'
-    for p in list(filter(lambda p: not 'ignore' in p, predictions)):
+    for p in list(filter(lambda p: 'ignore' in p, predictions)):
+        p['priority'] = -4
+    for p in list(filter(lambda p: not 'priority' in p, predictions)):
         tagName = p['tagName']
         probability = p['probability']
         i_type = None
@@ -66,6 +68,9 @@ def notify(cam, message, image, predictions, config, st):
             i = -3
             i_type = 'vehicle rule'
             # cars should not be possible here, unless in road
+        elif tagName == 'cat' and cam.name == 'garage':
+            i = -2
+            i_type = 'cat in garage rule'
         elif tagName == 'person' and cam.name == 'garage':
             i = -3
             i_type = 'person in garage rule'
@@ -92,6 +97,8 @@ def notify(cam, message, image, predictions, config, st):
             i = 1
             i_type = 'dog in garage rule'
         if i is not None:
+            p['priority'] = i
+            p['priority_type'] = i_type
             if priority is None:
                 priority = i
                 priority_type = i_type
@@ -131,10 +138,10 @@ def notify(cam, message, image, predictions, config, st):
     cropped_image = image.crop(crop_rectangle)
 
     if priority <= -3:
-        print('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
+        #print('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
         return priority
-    else:
-        print('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
+    #else:
+    #    print('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
     if has_vehicles:
         pprint(vehicles)
         st.turn_on_outside_lights()
@@ -143,8 +150,7 @@ def notify(cam, message, image, predictions, config, st):
         top = max(0, min(p['boundingBox']['top'] - 0.05 for p in vehicles) * height)
         bottom = min(height, max(p['boundingBox']['top'] + p['boundingBox']['height'] + 0.05 for p in vehicles) * height)
         crop_rectangle = (left, top, right, bottom)
-        print("Cropping vehicle to {}".format(crop_rectangle))
-        vehicle_image = cam.image.crop(crop_rectangle)
+        vehicle_image = image.crop(crop_rectangle)
         save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
         save_vehicle = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + vehicles[0]['camName'] + "-" + "sighthound.jpg")
         vehicle_image.save(save_vehicle)
@@ -213,7 +219,7 @@ def notify(cam, message, image, predictions, config, st):
     output_bytes = BytesIO()
     cropped_image.save(output_bytes, 'jpeg')
     output_bytes.seek(0)
-    print("Sending Pushover message '{}'".format(message), flush=True)
+    # send as -2 to generate no notification/alert, -1 to always send as a quiet notification, 1 to display as high-priority and bypass the user's quiet hours, or 2 to also require confirmation from the user
     r = requests.post("https://api.pushover.net/1/messages.json", data = {
       "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
       "user": "uzziquh6d7a4vyouise2ti482gc1pq",
