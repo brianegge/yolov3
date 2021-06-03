@@ -14,7 +14,8 @@ PYTHONPATH=/home/egge/github/pytorch-YOLOv4
 if [ $weights -nt $onnx ]
 then
   echo "Updating $onnx"
-  python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=608/' -e 's/^width=.*/width=608/' $cfg) $weights $onnx
+  python3 ./darknet2onnx.py $cfg $weights $onnx
+  #python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=608/' -e 's/^width=.*/width=608/' $cfg) $weights $onnx
   [ -e ${onnx}.engine ] && rm ${onnx}.engine
   cp -p $labels /home/egge/detector/simplescan/vehicle-labels.txt
   echo "Updated $onnx"
@@ -28,7 +29,8 @@ onnx=/home/egge/detector/simplescan/ipcams_color_yolov4.onnx
 if [ $weights -nt $onnx ]
 then
   echo "Updating $onnx"
-  python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=768/' -e 's/^width=.*/width=1344/' $cfg) $weights $onnx
+  python3 ./darknet2onnx.py $cfg $weights $onnx
+  #python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=768/' -e 's/^width=.*/width=1344/' $cfg) $weights $onnx
   [ -e ${onnx}.engine ] && rm ${onnx}.engine
   cp -pv $labels /home/egge/detector/simplescan/ipcams-labels.txt
   echo "Updated $onnx"
@@ -40,7 +42,8 @@ onnx=/home/egge/detector/simplescan/ipcams_grey_yolov4.onnx
 if [ $weights -nt $onnx ]
 then
   echo "Updating $onnx"
-  python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=768/' -e 's/^width=.*/width=1344/' $cfg) $weights $onnx
+  python3 ./darknet2onnx.py $cfg $weights $onnx
+  #python3 ./darknet2onnx.py <(sed -e 's/^height=.*/height=768/' -e 's/^width=.*/width=1344/' $cfg) $weights $onnx
   [ -e ${onnx}.engine ] && rm ${onnx}.engine
   echo "Updated $onnx"
 fi

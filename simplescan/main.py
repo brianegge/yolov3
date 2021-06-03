@@ -28,6 +28,8 @@ async def main(options):
     config.read(options.config_file)
     st = SmartThings(config)
     detector_config = config['detector']
+    color_model_config = config['color-model']
+    grey_model_config = config['grey-model']
 
     # Load labels
     with open(detector_config['labelfile-path'], 'r') as f:
@@ -42,23 +44,12 @@ async def main(options):
             excludes = json.load(f)
 
     sd = sdnotify.SystemdNotifier()
-    sd.notify("STATUS=Loading main model")
-    vehicle_model = None
-    if 'yolov4' in detector_config['color-model']:
-        color_model = ONNXTensorRTv4ObjectDetection(detector_config['color-model'], labels, detector_config.getfloat('prob_threshold', 0.10))
-        grey_model = ONNXTensorRTv4ObjectDetection(detector_config['grey-model'], labels, detector_config.getfloat('prob_threshold', 0.10), channels=1)
-    elif options.trt:
-        color_model = ONNXTensorRTObjectDetection(detector_config['color-model'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
-    else:
-        color_model = ONNXRuntimeObjectDetection(detector_config['color-model'], labels, detector_config.getfloat('prob_threshold', 0.10), scale=4)
-    if 'vehicle-model' in detector_config:
-        sd.notify("STATUS=Loading vehicle/packages model")
-        if 'yolov4' in detector_config['vehicle-model']:
-            vehicle_model = ONNXTensorRTv4ObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), model_width=608, model_height=608)
-        elif options.trt:
-            vehicle_model = ONNXTensorRTObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
-        else:
-            vehicle_model = ONNXRuntimeObjectDetection(detector_config['vehicle-model'], vehicle_labels, detector_config.getfloat('prob_threshold', 0.10), scale=1)
+    sd.notify("STATUS=Loading color model")
+    color_model = ONNXTensorRTv4ObjectDetection(color_model_config, labels)
+    sd.notify("STATUS=Loading grey model")
+    grey_model = ONNXTensorRTv4ObjectDetection(grey_model_config, labels)
+    sd.notify("STATUS=Loading vehicle/packages model")
+    vehicle_model = ONNXTensorRTv4ObjectDetection(config['vehicle-model'], vehicle_labels)
     sd.notify("STATUS=Loaded models")
    
     cams=[]

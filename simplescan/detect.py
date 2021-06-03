@@ -21,7 +21,7 @@ class Camera():
     def __init__(self, config, excludes):
         self.name = config['name']
         self.config = config
-        self.objects = []
+        self.objects = set()
         self.prev_predictions = {}
         self.is_file = False
         self.vehicle_check = config.getboolean('vehicle_check', False)
@@ -32,6 +32,7 @@ class Camera():
         self.capture_async = self.config.getboolean('async', False)
         self.prior_image = None
         self.prior_time = None
+        self.prior_priority = -4
         self.age = 0
         self.fails = 0
         self.skip = 0
@@ -55,13 +56,16 @@ class Camera():
                     self.error = 'empty'
                     return self
                 self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
-                if self.vehicle_check:
-                    self.resized2 = cv2.resize(self.image, (608, 608))
                 hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
                 sum = np.sum(hsv[:,:,0])
                 if sum == 0:
+                    self.resized2 = cv2.resize(cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB), (608, 608))
                     self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-                self.resized = cv2.resize(self.image, (1344, 768))
+                    self.resized = cv2.resize(self.image, (608, 608))
+                else:
+                    resized = cv2.resize(self.image, (608, 608))
+                    self.resized = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                    self.resized2 = self.resized
                 self.error = None
                 self.fails = 0
             except:
@@ -109,7 +113,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
         p['camName'] = cam.name
     add_centers(predictions)
     # remove road
-    if cam.name in ['peach tree','driveway']:
+    if cam.name in ['driveway']: #'peach tree'
         for p in predictions:
             x = p['center']['x']
             if x < 0.651:
@@ -117,16 +121,12 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
             else:
                 road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
             p['road_y'] = road_y
-            if p['center']['y'] < road_y and (p['tagName'] in ['vehicle','person']):
+            if p['center']['y'] < road_y and (p['tagName'] in ['vehicle','person','package']):
                 p['ignore'] = 'road'
     elif cam.name == 'garage-l':
         for p in predictions:
-            if p['boundingBox']['top'] + p['boundingBox']['height'] < .18 and (p['tagName'] in ['vehicle','person']):
-                p['ignore'] = 'road'
-    elif cam.name == 'garage-r':
-        for p in predictions:
-            if p['tagName'] in ['vehicle']:
-                p['ignore'] = 'package cam'
+            if p['boundingBox']['top'] + p['boundingBox']['height'] < .21 and (p['tagName'] in ['vehicle','person']):
+                p['ignore'] = 'neighbor'
     elif cam.name in ['front entry']:
         for p in filter(lambda p: p['tagName'] == 'package', predictions):
             if p['center']['x'] < 0.178125:
@@ -148,29 +148,38 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
             p['ignore'] = 'class for cam'
 
     valid_predictions = list(filter(lambda p: not('ignore' in p), predictions))
+    valid_objects = set(p['tagName'] for p in valid_predictions)
+    departed_objects = cam.objects - valid_objects
 
-    save_dir = os.path.join(config['detector']['save-path'],date.today().strftime("%Y%m%d"))
+    yyyymmdd = date.today().strftime("%Y%m%d")
+    save_dir = os.path.join(config['detector']['save-path'],yyyymmdd)
+    today_dir = os.path.join(config['detector']['save-path'],'today')
+    if not os.path.exists(today_dir):
+        os.symlink(yyyymmdd, today_dir)
+    if os.readlink(today_dir) != yyyymmdd:
+        os.unlink(today_dir)
+        os.symlink(yyyymmdd, today_dir)
+
     os.makedirs(save_dir,exist_ok=True)
-    if len(valid_predictions) == 0:
-        if len(list(filter(lambda p: p != 'dog', cam.objects))):
-            print(" %s departed" % (",".join(cam.objects)), end="")
-            basename = os.path.join(save_dir, datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(cam.objects) + "-departed")
-            if isinstance(image, Image.Image):
-                image.save(basename + '.jpg')
-            else:
-                cv2.imwrite(basename + '.jpg', image)
-            cam.objects.clear()
-        cam.prior_image = image
-        cam.prior_time = datetime.now()
-    detected_objects = list(p['tagName'] for p in valid_predictions)
+    if len(departed_objects) > 0 and cam.prior_priority > -3:
+        print("\n{} current={}, prior={}, departed={}".format( cam.name, ",".join(valid_objects), ",".join(cam.objects), ",".join(departed_objects)) )
+        # print(" %s departed" % (",".join(departed_objects)), end="")
+        basename = os.path.join(save_dir, datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(departed_objects) + "-departed")
+        if isinstance(image, Image.Image):
+            image.save(basename + '.jpg')
+        else:
+            cv2.imwrite(basename + '.jpg', image)
     # Always open garage door, we can call this many times
     if smartthings:
-        if 'cat' in detected_objects and cam.name in ['shed','garage-l', 'garage-r'] and 'crack_garage' in smartthings:
-            print("Cracking open garage door for cat")
+        if 'cat' in valid_objects and cam.name in ['shed','garage-l', 'garage-r'] and 'crack_garage' in smartthings:
+            print("Letting cat in")
             r = requests.get(smartthings['crack_garage'])
             if r.json()['result'] != "OK":
                 print("Failed to crack open garage door for cat")
                 print(r.text)
+        elif 'cat' in valid_objects and cam.name in ['garage']:
+            print("Letting cat out")
+            st.crack_garage_door()
 
     colors = config['colors']
     uniq_predictions = []
@@ -196,8 +205,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
         if isinstance(image, Image.Image):
             im_pil = image.copy() # for drawing on
         else:
-            im_pil = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            im_pil = Image.fromarray(im_pil)
+            im_pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         for p in predictions:
             if 'ignore' in p:
                 width = 2
@@ -208,44 +216,46 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
         if cam.name in ['peach tree','driveway']:
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
         elif cam.name in ['garage-l']:
-            draw_road(im_pil, [(0, 0.18), (1.0, 0.18)])
+            draw_road(im_pil, [(0, 0.21), (1.0, 0.21)])
 
-    uniq_objects = list(p['tagName'] for p in uniq_predictions)
+    uniq_objects = set(p['tagName'] for p in uniq_predictions)
 
     # Only notify deer if not seen
     if 'deer' in uniq_objects:
         st.deer_alert()
 
     if len(uniq_objects):
-        if cam.name == 'driveway':
-            message = "%s in %s" % (",".join(detected_objects),cam.name)
+        if cam.name in ['driveway','garage']:
+            message = "%s in %s" % (",".join(valid_objects),cam.name)
         elif cam.name == 'shed':
-            message = "%s in front of garage" % ",".join(detected_objects)
+            message = "%s in front of garage" % ",".join(valid_objects)
         elif cam.name == 'garage-r':
-            message = "%s in front of left garage" % ",".join(detected_objects)
+            message = "%s in front of left garage" % ",".join(valid_objects)
         elif cam.name == 'garage-l':
-            message = "%s in front of right garage" % ",".join(detected_objects)
+            message = "%s in front of right garage" % ",".join(valid_objects)
         else:
-            message = "%s near %s" % (",".join(detected_objects),cam.name)
+            message = "%s near %s" % (",".join(valid_objects),cam.name)
         if cam.age > 2:
             priority = notify(cam, message, im_pil, valid_predictions, config, st)
         else:
             print("Skipping notifications until after warm up")
             priority = 0
-        cam.objects = detected_objects
     else:
         priority = -4
+    # Notify may also mark objects as ignore
+    valid_predictions = list(filter(lambda p: not('ignore' in p), predictions))
+    cam.objects = set(p['tagName'] for p in valid_predictions)
 
     if priority > -3 and not cam.is_file:
         # don't save file if we're reading from a file
         if cam.prior_image is not None:
-            basename = os.path.join(save_dir,cam.prior_time.strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects) + "-prior")
+            basename = os.path.join(save_dir,cam.prior_time.strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(valid_objects) + "-prior")
             if isinstance(cam.prior_image, Image.Image):
                 cam.prior_image.save(basename + '.jpg')
             else:
                 cv2.imwrite(basename + '.jpg', cam.prior_image)
             cam.prior_image = None
-        basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(detected_objects))
+        basename = os.path.join(save_dir,datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(valid_objects))
         if isinstance(image, Image.Image):
             image.save(basename + '.jpg')
         else:
@@ -253,6 +263,10 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
         with open(basename + '.txt', 'w') as file:
             file.write(json.dumps(predictions))
         im_pil.save(basename + '-annotated.jpg')
+    else:
+        cam.prior_image = image
+        cam.prior_time = datetime.now()
+    cam.prior_priority = priority
 
     def format_prediction(p):
         if 'ignore' in p:

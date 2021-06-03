@@ -11,7 +11,7 @@ sys.path.insert(0,'/home/egge/detector/simplescan/pysmartthings/pysmartthings')
 import pysmartthings
 import sighthound
 import re
-#import logging
+import logging
 
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -53,7 +53,7 @@ def notify(cam, message, image, predictions, config, st):
         notify_vehicle = st.should_notify_vehicle()
     else:
         notify_vehicle = False
-    if has_person:
+    if has_person and not cam.name == 'peach tree':
         notify_person = st.should_notify_person()
     else:
         notify_person = False
@@ -174,7 +174,7 @@ def notify(cam, message, image, predictions, config, st):
                         make = license_plates[guess].get('make')
                         if license_plates[guess].get("announce", True) == False:
                             print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
-                            return
+                            return -3
                         if owner.lower() == "house cleaner":
                             st.set_st_scene("House Cleaning")
                             st.open_garage_door()
@@ -213,24 +213,28 @@ def notify(cam, message, image, predictions, config, st):
         else:
             print("Not speaking package delivery because probability {} < 0.9".format(prob))
             if not has_dog:
-                priority = -3
+                priority = -1
 
     # prepare post
     output_bytes = BytesIO()
     cropped_image.save(output_bytes, 'jpeg')
     output_bytes.seek(0)
     # send as -2 to generate no notification/alert, -1 to always send as a quiet notification, 1 to display as high-priority and bypass the user's quiet hours, or 2 to also require confirmation from the user
-    r = requests.post("https://api.pushover.net/1/messages.json", data = {
-      "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
-      "user": "uzziquh6d7a4vyouise2ti482gc1pq",
-      "message": message,
-      "priority": priority,
-      "sound": sound
-      },
-      files = {
-          "attachment": ("image.jpg", output_bytes, "image/jpeg")
-    })
-    if r.status_code != 200:
-        pprint(r)
-        pprint(r.headers)
+    try:
+        r = requests.post("https://api.pushover.net/1/messages.json", data = {
+          "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
+          "user": "uzziquh6d7a4vyouise2ti482gc1pq",
+          "message": message,
+          "priority": priority,
+          "sound": sound
+          },
+          files = {
+              "attachment": ("image.jpg", output_bytes, "image/jpeg")
+        })
+        if r.status_code != 200:
+            pprint(r)
+            pprint(r.headers)
+    except Exception:
+        logger.exception("Failed to call Pushover")
+
     return priority

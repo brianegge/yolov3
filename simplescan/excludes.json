@@ -104,9 +104,6 @@
     ]
   },
   "swing":{
-    "*":[
-      {"left": 0.65689486, "top": 0.19388077, "width": 0.01340389, "height": 0.05450207, "comment": "wood splitter"}
-    ],
     "deer":[
     ],
     "person":[

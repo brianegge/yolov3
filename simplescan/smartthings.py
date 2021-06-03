@@ -31,6 +31,13 @@ class SmartThings(object):
             r = requests.post('https://api.smartthings.com/v1/devices/{deviceId}/commands'.format(**device), headers=self.headers, json=json)
             return r.content.decode("utf-8")
 
+    def crack_garage_door(self):
+        r = requests.get('https://graph-na04-useast2.api.smartthings.com/api/token/0f145ac7-a135-48ad-969d-a7287bd38a26/smartapps/installations/0aea3b0d-96de-461c-99a8-ef53a3fb6384/execute/:e3155f82b07d3c384bab97d51e9b841e:')
+        print(r.text)
+        if r.json()['result'] != "OK":
+            print("Failed to crack open garage door")
+            print(r.text)
+
     def deer_alert(self):
         print("Deer alert!")
         # invoke webcore piston

@@ -18,11 +18,12 @@ TRT_LOGGER = trt.Logger()
 
 class ONNXTensorRTv4ObjectDetection(ObjectDetection):
     """Object Detection class for ONNX Runtime"""
-    def __init__(self, model_filename, labels, prob_threshold=0.10, model_height=768, model_width=1344, channels=3):
-        super(ONNXTensorRTv4ObjectDetection, self).__init__(labels, prob_threshold)
-        self.model_width = model_width
-        self.model_height = model_height
-        self.channels = channels
+    def __init__(self, config, labels): #, prob_threshold=0.10, model_height=768, model_width=1344, channels=3):
+        super(ONNXTensorRTv4ObjectDetection, self).__init__(labels, float(config.get('prob_threshold')))
+        self.model_width = int(config.get('width'))
+        self.model_height = int(config.get('height'))
+        self.channels = int(config.get('channels'))
+        model_filename = config.get('onnx')
         engine_file_path = model_filename + ".engine"
         self.cfx = cuda.Device(0).make_context()
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
@@ -33,13 +34,13 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                 self.engine = runtime.deserialize_cuda_engine(f.read())
         else:
             print("Compiling model {}".format(os.path.basename(model_filename)))
-            self.engine = self.get_engine(model_filename, engine_file_path, channels)
+            self.engine = self.get_engine(model_filename, engine_file_path)
         self.is_fp16 = False # network.get_input(0).type == 'tensor(float16)'
         self.input_name = 'input' # network.get_input(0).name
         self.context = self.engine.create_execution_context()
-        self.context.set_binding_shape(0, (1, channels, model_height, model_width))
+        self.context.set_binding_shape(0, (1, self.channels, self.model_height, self.model_width))
 
-    def get_engine(self, onnx_file_path, engine_file_path="", channels=3):
+    def get_engine(self, onnx_file_path, engine_file_path):
         """Takes an ONNX file and creates a TensorRT engine to run inference with"""
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network(common.EXPLICIT_BATCH) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
             builder.max_workspace_size = 1 << 28 # 256MiB
@@ -56,8 +57,8 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                     for error in range(parser.num_errors):
                         print (parser.get_error(error))
                     return None
-            print("Creating model with shape {},{},{}".format(channels, self.model_height,self.model_width))
-            network.get_input(0).shape = [1, channels, self.model_height, self.model_width] # NCWH
+            print("Creating model with shape {},{},{}".format(self.channels, self.model_height,self.model_width))
+            network.get_input(0).shape = [1, self.channels, self.model_height, self.model_width] # NCWH
             print('Completed parsing of ONNX file')
             print('Building an engine from file {}; this may take a while...'.format(onnx_file_path))
             engine = builder.build_cuda_engine(network)
