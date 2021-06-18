@@ -16,6 +16,7 @@ from PIL import UnidentifiedImageError
 from PIL import Image
 import cv2
 import traceback
+from pathlib import Path
 
 class Camera():
     def __init__(self, config, excludes):
@@ -36,6 +37,25 @@ class Camera():
         self.age = 0
         self.fails = 0
         self.skip = 0
+        self.ftp_path = config.get('ftp-path', None)
+        self.globber = None
+
+    def poll(self):
+        if self.ftp_path:
+            if self.globber is None:
+                globber = Path(self.ftp_path).glob('**/*.jpg')
+            try:
+                f = next(globber)
+            except StopIteration:
+                self.globber = None
+                return None
+            img = cv2.imread(str(f))
+            if img is not None and len(img) > 0:
+                self.image = img
+                self.resize()
+                os.remove(f)
+            return self
+        return None
 
     def capture(self):
         self.image = None
@@ -48,6 +68,7 @@ class Camera():
         if 'file' in self.config:
             self.is_file = True
             self.image = cv2.imread(self.config['file'])
+            self.resize()
         else:
             try:
                 resp = self.session.get(self.config['uri'], timeout=15, stream=True).raw
@@ -56,16 +77,7 @@ class Camera():
                     self.error = 'empty'
                     return self
                 self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
-                hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
-                sum = np.sum(hsv[:,:,0])
-                if sum == 0:
-                    self.resized2 = cv2.resize(cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB), (608, 608))
-                    self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-                    self.resized = cv2.resize(self.image, (608, 608))
-                else:
-                    resized = cv2.resize(self.image, (608, 608))
-                    self.resized = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                    self.resized2 = self.resized
+                self.resize()
                 self.error = None
                 self.fails = 0
             except:
@@ -75,7 +87,19 @@ class Camera():
                 self.fails += 1
                 self.error = sys.exc_info()[0]
         return self
-    
+
+    def resize(self):
+        hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
+        sum = np.sum(hsv[:,:,0])
+        if sum == 0:
+            self.resized2 = cv2.resize(cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB), (608, 608))
+            self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+            self.resized = cv2.resize(self.image, (608, 608))
+        else:
+            resized = cv2.resize(self.image, (608, 608))
+            self.resized = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            self.resized2 = self.resized
+
 def add_centers(predictions):
     for p in predictions:
         bbox = p['boundingBox']
@@ -163,7 +187,6 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
     os.makedirs(save_dir,exist_ok=True)
     if len(departed_objects) > 0 and cam.prior_priority > -3:
         print("\n{} current={}, prior={}, departed={}".format( cam.name, ",".join(valid_objects), ",".join(cam.objects), ",".join(departed_objects)) )
-        # print(" %s departed" % (",".join(departed_objects)), end="")
         basename = os.path.join(save_dir, datetime.now().strftime("%H%M%S") + "-" + cam.name + "-" + "_".join(departed_objects) + "-departed")
         if isinstance(image, Image.Image):
             image.save(basename + '.jpg')
