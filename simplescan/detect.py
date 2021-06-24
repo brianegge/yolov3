@@ -31,8 +31,10 @@ class Camera():
         if 'user' in self.config:
             self.session.auth = HTTPDigestAuth(self.config['user'], self.config['password'])
         self.capture_async = self.config.getboolean('async', False)
+        self.error = None
+        self.image = None
         self.prior_image = None
-        self.prior_time = None
+        self.prior_time = datetime.fromtimestamp(0)
         self.prior_priority = -4
         self.age = 0
         self.fails = 0
@@ -41,6 +43,7 @@ class Camera():
         self.globber = None
 
     def poll(self):
+        # print('polling {}'.format(self.name))
         if self.ftp_path:
             if self.globber is None:
                 globber = Path(self.ftp_path).glob('**/*.jpg')
@@ -49,12 +52,15 @@ class Camera():
             except StopIteration:
                 self.globber = None
                 return None
+            print('found {}'.format(f))
             img = cv2.imread(str(f))
+            os.remove(f)
             if img is not None and len(img) > 0:
                 self.image = img
                 self.resize()
-                os.remove(f)
-            return self
+                return self
+            else:
+                self.error='bad file'
         return None
 
     def capture(self):
@@ -62,7 +68,7 @@ class Camera():
         self.resized = None
         self.resized2 = None
         if self.skip > 0:
-            self.error = 'skip'
+            self.error = 'skip={}'.format(self.skip)
             self.skip -= 1
             return self
         if 'file' in self.config:
@@ -71,7 +77,7 @@ class Camera():
             self.resize()
         else:
             try:
-                resp = self.session.get(self.config['uri'], timeout=15, stream=True).raw
+                resp = self.session.get(self.config['uri'], timeout=20, stream=True).raw
                 bytes = np.asarray(bytearray(resp.read()), dtype="uint8")
                 if len(bytes) == 0:
                     self.error = 'empty'

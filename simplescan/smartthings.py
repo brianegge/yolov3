@@ -12,7 +12,7 @@ class SmartThings(object):
         response = requests.get('https://api.smartthings.com/v1/scenes', headers=self.headers)
         self.scenes = response.json()['items']
         response = requests.get('https://api.smartthings.com/v1/devices', headers=self.headers)
-        self.devices = response.json()['items']
+        self.devices = {device['label'].lower():device for device in response.json()['items']}
         print("SmartThings started with {} scenes and {} devices".format(len(self.scenes),len(self.devices)))
 
     def set_st_scene(self, scene):
@@ -47,10 +47,10 @@ class SmartThings(object):
             print(r.text)
 
     def get_device(self, name):
-        for device in self.devices:
-            if device['label'] == name:
-                return device
-        raise Exception("No such device \"{}\"".format(name))
+        try:
+            return self.devices[name.lower()]
+        except KeyError:
+            raise KeyError("No such device \"{}\"".format(name))
 
     def get_contactSensor_value(self, sensor):
         device = self.get_device(sensor)

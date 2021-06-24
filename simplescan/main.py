@@ -27,6 +27,8 @@ async def main(options):
     config = configparser.ConfigParser()
     config.read(options.config_file)
     st = SmartThings(config)
+    assert st.get_device('door left')
+    assert st.get_device('door right')
     detector_config = config['detector']
     color_model_config = config['color-model']
     grey_model_config = config['grey-model']
@@ -81,7 +83,7 @@ async def main(options):
               prediction_time += p
               messages.append(m)
       else:
-          for cam in cams:
+          for cam in filter(lambda cam: cam.ftp_path, cams):
               try:
                   capture_futures.append(async_pool.submit(cam.poll))
               except KeyboardInterrupt:
@@ -104,7 +106,7 @@ async def main(options):
           if count == 0:
               print("Scanning ", end="")
               # scan each camera
-              for cam in cams:
+              for cam in filter(lambda cam: (datetime.now() - cam.prior_time).total_seconds() > 10, cams):
                   try:
                       if cam.capture_async and not options.sync:
                           capture_futures.append(async_pool.submit(cam.capture))
@@ -130,11 +132,12 @@ async def main(options):
       end_time = timer()
       print(",".join(sorted(messages)), end="")
       print('.. completed in %.2fs, spent %.2fs predicting' % ( (end_time - start_time), prediction_time ), flush=True)
-      if prediction_time < 0.01:
-          print("Cameras appear down, waiting 30 seconds")
-          time.sleep(30)
+      #if prediction_time < 0.01:
+      #    print("Cameras appear down, waiting 30 seconds")
+      #    time.sleep(30)
       if end_time - cleanup_time > 3600:
-          os.system('/usr/bin/find /srv/ftp/ -mindepth 1 -type f -name "*.dav" -o -name "*.idx" -delete')
+          print("Cleaning up")
+          os.system('/usr/bin/find /srv/ftp/ -mindepth 1 -type f \\( -name "*.dav" -o -name "*.idx" \\) -delete')
           os.system('/usr/bin/find /srv/ftp/ -mindepth 2 -empty -type d -delete')
           for cam in cams:
               cam.globber = None
