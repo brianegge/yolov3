@@ -5,6 +5,7 @@
 # (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
 # scale is a multiplier of the default model size
 import os
+import subprocess
 import sys
 import configparser
 from timeit import default_timer as timer
@@ -14,7 +15,7 @@ from object_detection_rt import ONNXTensorRTObjectDetection
 from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
 import asyncio
 import concurrent.futures
-from datetime import datetime
+from datetime import datetime,timedelta
 import requests
 import faulthandler, signal
 import argparse
@@ -22,13 +23,14 @@ import json
 import time
 import sdnotify
 from smartthings import SmartThings
+from utils import cleanup
 
 async def main(options):
     config = configparser.ConfigParser()
     config.read(options.config_file)
     st = SmartThings(config)
-    assert st.get_device('door left')
-    assert st.get_device('door right')
+    assert st.get_contactSensor_value('door left')
+    assert st.get_contactSensor_value('door right')
     detector_config = config['detector']
     color_model_config = config['color-model']
     grey_model_config = config['grey-model']
@@ -68,7 +70,7 @@ async def main(options):
     
     sd.notify("READY=1")
     sd.notify("STATUS=Running")
-    cleanup_time = 0
+    cleanup_time = datetime(1970, 1, 1, 0, 0, 0)
     while True:
       sd.notify("WATCHDOG=1")
       start_time = timer()
@@ -135,13 +137,14 @@ async def main(options):
       #if prediction_time < 0.01:
       #    print("Cameras appear down, waiting 30 seconds")
       #    time.sleep(30)
-      if end_time - cleanup_time > 3600:
+      if datetime.now() - cleanup_time > timedelta(minutes=60):
+          #script = os.path.join(os.path.dirname(__file__), 'cleanup.sh')
           print("Cleaning up")
-          os.system('/usr/bin/find /srv/ftp/ -mindepth 1 -type f \\( -name "*.dav" -o -name "*.idx" \\) -delete')
-          os.system('/usr/bin/find /srv/ftp/ -mindepth 2 -empty -type d -delete')
-          for cam in cams:
+          #subprocess.run(script, check=True)
+          for cam in filter(lambda cam: cam.ftp_path, cams):
+              cleanup(cam.ftp_path)
               cam.globber = None
-          cleanup_time = end_time
+          cleanup_time = datetime.now()
       if 'once' in detector_config:
           break
     

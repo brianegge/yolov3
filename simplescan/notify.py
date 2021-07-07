@@ -57,7 +57,7 @@ def notify(cam, message, image, predictions, config, st):
         notify_person = st.should_notify_person()
     else:
         notify_person = False
-    if notify_person and cam.name == 'deck' and (st.get_switch_value('door left') or st.get_switch_value('door right')) and mode == 'stay':
+    if notify_person and cam.name == 'deck' and (st.get_contactSensor_value('door left') or st.get_contactSensor_value('door right')) and mode == 'stay':
         print("Ignoring person as patio doors are open and mode is stay")
         notify_person = False
     sound = 'pushover'

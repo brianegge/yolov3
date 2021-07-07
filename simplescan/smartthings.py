@@ -55,11 +55,15 @@ class SmartThings(object):
     def get_contactSensor_value(self, sensor):
         device = self.get_device(sensor)
         response = requests.get('https://api.smartthings.com/v1/devices/{deviceId}/components/main/capabilities/contactSensor/status'.format(**device), headers=self.headers).json()
+        if 'error' in response:
+            print("response={}".format(response))
         return response['contact']['value']
 
     def get_switch_value(self, switch):
         device = self.get_device(switch)
         response = requests.get('https://api.smartthings.com/v1/devices/{deviceId}/components/main/capabilities/switch/status'.format(**device), headers=self.headers).json()
+        if 'error' in response:
+            print("response={}".format(response))
         return response['switch']['value'] == "on"
 
     def should_notify_vehicle(self):
