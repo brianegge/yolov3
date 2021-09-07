@@ -5,3 +5,5 @@ colorhash
 filterpy
 sdnotify
 numpy==1.16.6
+pytest
+requests

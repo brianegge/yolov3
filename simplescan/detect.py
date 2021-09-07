@@ -27,9 +27,6 @@ class Camera():
         self.is_file = False
         self.vehicle_check = config.getboolean('vehicle_check', False)
         self.excludes = excludes
-        self.session = requests.Session()
-        if 'user' in self.config:
-            self.session.auth = HTTPDigestAuth(self.config['user'], self.config['password'])
         self.capture_async = self.config.getboolean('async', False)
         self.error = None
         self.image = None
@@ -41,6 +38,7 @@ class Camera():
         self.skip = 0
         self.ftp_path = config.get('ftp-path', None)
         self.globber = None
+        self.session = None
 
     def poll(self):
         # print('polling {}'.format(self.name))
@@ -76,21 +74,27 @@ class Camera():
             self.image = cv2.imread(self.config['file'])
             self.resize()
         else:
+            if self.session == None:
+                self.session = requests.Session()
+                if 'user' in self.config:
+                    self.session.auth = HTTPDigestAuth(self.config['user'], self.config['password'])
             try:
-                resp = self.session.get(self.config['uri'], timeout=20, stream=True).raw
-                bytes = np.asarray(bytearray(resp.read()), dtype="uint8")
-                if len(bytes) == 0:
-                    self.error = 'empty'
-                    return self
-                self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
-                self.resize()
-                self.error = None
-                self.fails = 0
+                with self.session.get(self.config['uri'], timeout=20, stream=False) as resp:
+                    resp.raise_for_status()
+                    bytes = np.asarray(bytearray(resp.raw.read()), dtype="uint8")
+                    if len(bytes) == 0:
+                        self.error = 'empty'
+                        return self
+                    self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
+                    self.resize()
+                    self.error = None
+                    self.fails = 0
             except:
                 self.image = None
                 self.resized = None
                 self.skip = 2 ** self.fails
                 self.fails += 1
+                self.session = None
                 self.error = sys.exc_info()[0]
         return self
 
@@ -114,7 +118,7 @@ def add_centers(predictions):
         center['x'] = bbox['left'] + bbox['width'] / 2.0
         center['y'] = bbox['top'] + bbox['height'] / 2.0
 
-def detect(cam, color_model, grey_model, vehicle_model, config, st):
+def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
     threshold = config['detector'].getfloat('threshold')
     smartthings = config['smartthings']
     image = cam.image
@@ -174,8 +178,6 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
                 if iou > 0.5:
                     p['ignore'] = e.get('comment', 'static iou {}'.format(iou))
                     break
-        if p['tagName'] == 'package' and cam.name == 'shed':
-            p['ignore'] = 'class for cam'
 
     valid_predictions = list(filter(lambda p: not('ignore' in p), predictions))
     valid_objects = set(p['tagName'] for p in valid_predictions)
@@ -225,6 +227,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
             if iou > 0.5:
                 p['ignore'] = "prev-iou={:.2f}".format(iou)
                 skip = True
+                priority = cam.prior_priority
                 break
         if not skip:
             prev_class.append(p['boundingBox'])
@@ -265,7 +268,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st):
         else:
             message = "%s near %s" % (",".join(valid_objects),cam.name)
         if cam.age > 2:
-            priority = notify(cam, message, im_pil, valid_predictions, config, st)
+            priority = notify(cam, message, im_pil, valid_predictions, config, st, ha)
         else:
             print("Skipping notifications until after warm up")
             priority = 0

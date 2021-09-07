@@ -32,8 +32,8 @@ def edits2(word):
     "All edits that are two edits away from `word`."
     return (e2 for e1 in edits1(word) for e2 in edits1(e1))
 
-def notify(cam, message, image, predictions, config, st):
-    mode = st.get_st_mode()
+def notify(cam, message, image, predictions, config, st, ha):
+    mode = ha.mode()
     mode_key = 'priority-%s' % mode
     if mode_key in config:
         mode_priorities = config[mode_key]
@@ -50,16 +50,21 @@ def notify(cam, message, image, predictions, config, st):
     packages = list(filter(lambda p: p['tagName'] == 'package', predictions))
     has_package = len(packages) > 0
     if has_vehicles:
-        notify_vehicle = st.should_notify_vehicle()
+        notify_vehicle = ha.should_notify_vehicle()
     else:
         notify_vehicle = False
     if has_person and not cam.name == 'peach tree':
-        notify_person = st.should_notify_person()
+        notify_person = ha.should_notify_person()
     else:
         notify_person = False
-    if notify_person and cam.name == 'deck' and (st.get_contactSensor_value('door left') or st.get_contactSensor_value('door right')) and mode == 'stay':
-        print("Ignoring person as patio doors are open and mode is stay")
-        notify_person = False
+    if notify_person:
+        door_left = ha.get_switch('binary_sensor.door_left_contact')
+        door_right = ha.get_switch('binary_sensor.door_right_contact')
+        do_ignore = cam.name in ['deck','play'] and (door_left or door_left) and mode == 'stay'
+        print(f"Person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}")
+        if do_ignore:
+            notify_person = False
+            st.suppress_notify_person()
     sound = 'pushover'
     for p in list(filter(lambda p: 'ignore' in p, predictions)):
         p['priority'] = -4
@@ -94,11 +99,20 @@ def notify(cam, message, image, predictions, config, st):
         else:
             i_type = 'default'
             i = 0
+        if cam.name == 'peach tree' and mode == 'night' and i < 1:
+            i = 1
+            i_type = 'fruit robber'
         if tagName in config['sounds']:
             sound = config['sounds'][tagName]
         if tagName == 'dog' and p['camName'] == 'garage' and probability > 0.9 and not has_person:
             i = 1
             i_type = 'dog in garage rule'
+        if tagName == 'dog' and p['camName'] == 'deck' and i > -3:
+            i = -3
+            i_type = 'dog on deck'
+        if tagName == 'fox' and p['camName'] == 'deck' and i < 1:
+            i = 1
+            i_type = 'fox on deck'
         if i is not None:
             p['priority'] = i
             p['priority_type'] = i_type
@@ -147,7 +161,7 @@ def notify(cam, message, image, predictions, config, st):
     #    print('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
     if has_vehicles:
         pprint(vehicles)
-        st.turn_on_outside_lights()
+        ha.turn_on_outside_lights()
         left = max(0, min(p['boundingBox']['left'] - 0.05 for p in vehicles) * width)
         right = min(width, max(p['boundingBox']['left'] + p['boundingBox']['width'] + 0.05 for p in vehicles) * width)
         top = max(0, min(p['boundingBox']['top'] - 0.05 for p in vehicles) * height)
@@ -179,8 +193,7 @@ def notify(cam, message, image, predictions, config, st):
                             print('Ignoring {}\'s vehicle with plate {}'.format(owner, plate))
                             return -3
                         if owner.lower() == "house cleaner":
-                            st.set_st_scene("House Cleaning")
-                            st.open_garage_door()
+                            ha.house_cleaners_arrived()
                         break
                 if owner is None and plate['confidence'] > 0.05:
                     plate_name = plate['name']
@@ -225,7 +238,7 @@ def notify(cam, message, image, predictions, config, st):
     # send as -2 to generate no notification/alert, -1 to always send as a quiet notification, 1 to display as high-priority and bypass the user's quiet hours, or 2 to also require confirmation from the user
     try:
         r = requests.post("https://api.pushover.net/1/messages.json", data = {
-          "token": "ahyf2ozzhdb6a8ie95bdvvfwenzuox",
+          "token": config['pushover']['token'],
           "user": "uzziquh6d7a4vyouise2ti482gc1pq",
           "message": message,
           "priority": priority,

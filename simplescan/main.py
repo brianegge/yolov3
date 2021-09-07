@@ -23,14 +23,14 @@ import json
 import time
 import sdnotify
 from smartthings import SmartThings
+from homeassistant import HomeAssistant
 from utils import cleanup
 
 async def main(options):
     config = configparser.ConfigParser()
     config.read(options.config_file)
     st = SmartThings(config)
-    assert st.get_contactSensor_value('door left')
-    assert st.get_contactSensor_value('door right')
+    ha = HomeAssistant(config['homeassistant'])
     detector_config = config['detector']
     color_model_config = config['color-model']
     grey_model_config = config['grey-model']
@@ -81,7 +81,7 @@ async def main(options):
           for cam in cams:
               if cam.poll() is None:
                   cam.capture()
-              p,m = detect(cam, color_model, grey_model, vehicle_model, config, st)
+              p,m = detect(cam, color_model, grey_model, vehicle_model, config, st, ha)
               prediction_time += p
               messages.append(m)
       else:
@@ -98,7 +98,7 @@ async def main(options):
               try:
                   cam = f.result()
                   if cam:
-                      p,m = detect(cam, color_model, grey_model, vehicle_model, config, st)
+                      p,m = detect(cam, color_model, grey_model, vehicle_model, config, st, ha)
                       prediction_time += p
                       messages.append(m)
                       count += 1
@@ -123,7 +123,7 @@ async def main(options):
                   try:
                       cam = f.result()
                       if cam:
-                          p,m = detect(cam, color_model, grey_model, vehicle_model, config, st)
+                          p,m = detect(cam, color_model, grey_model, vehicle_model, config, st, ha)
                           prediction_time += p
                           messages.append(m)
                   except KeyboardInterrupt:
