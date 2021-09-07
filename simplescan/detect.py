@@ -79,7 +79,7 @@ class Camera():
                 if 'user' in self.config:
                     self.session.auth = HTTPDigestAuth(self.config['user'], self.config['password'])
             try:
-                with self.session.get(self.config['uri'], timeout=20, stream=False) as resp:
+                with self.session.get(self.config['uri'], timeout=20, stream=True) as resp:
                     resp.raise_for_status()
                     bytes = np.asarray(bytearray(resp.raw.read()), dtype="uint8")
                     if len(bytes) == 0:
