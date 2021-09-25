@@ -254,7 +254,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
 
     # Only notify deer if not seen
     if 'deer' in uniq_objects:
-        st.deer_alert()
+        ha.deer_alert(cam.name)
 
     if len(uniq_objects):
         if cam.name in ['driveway','garage']:

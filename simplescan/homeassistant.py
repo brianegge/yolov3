@@ -33,13 +33,15 @@ class HomeAssistant(object):
     def crack_garage_door(self):
         raise NotImplementedError
 
-    def deer_alert(self):
-        print("Deer alert!")
+    def deer_alert(self, location):
         # invoke webcore piston
-        r = requests.get(self.config['deer_alert'])
-        if r.json()['result'] != "OK":
-            print("Failed to alert for deer")
-            print(r.text)
+        json={"entity_id":"script.deer",
+              "variables":{
+                  "location":location
+              },
+              }
+        r = requests.post(f"{self.api}services/script/turn_on", json=json, headers=self.headers)
+        print(f"Deer alert={r}")
 
     def get_device(self, name):
         try:
@@ -62,9 +64,14 @@ class HomeAssistant(object):
         return self.get_switch('switch.person_detector')
 
     def echo_speaks(self, message):
-        url = self.config['echo_speaks']
         print("Speaking {}".format(message))
-        r = requests.get(url + quote(message))
+        json = {
+            "message": message,
+            "data":{
+                "type":"tts"
+                }
+            }
+        r = requests.post(f"{self.api}services/notify/alexa_media_kitchen_ecobee4", json=json, headers=self.headers)
         return r.content.decode("utf-8")
 
     def mode(self):

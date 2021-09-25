@@ -60,11 +60,13 @@ def notify(cam, message, image, predictions, config, st, ha):
     if notify_person:
         door_left = ha.get_switch('binary_sensor.door_left_contact')
         door_right = ha.get_switch('binary_sensor.door_right_contact')
-        do_ignore = cam.name in ['deck','play'] and (door_left or door_left) and mode == 'stay'
-        print(f"Person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}")
+        do_ignore = cam.name in ['deck','play'] and (door_left or door_left) and mode == 'home'
         if do_ignore:
+            print(f"Ignoring person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}")
             notify_person = False
             st.suppress_notify_person()
+        else:
+            print(f"Notifying person because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}")
     sound = 'pushover'
     for p in list(filter(lambda p: 'ignore' in p, predictions)):
         p['priority'] = -4
@@ -130,6 +132,7 @@ def notify(cam, message, image, predictions, config, st, ha):
     if priority is None:
         priority = 0
         priority_rule = 'default'
+        print('Using default priority')
 
     # crop to area of interest
     width, height = image.size
@@ -207,9 +210,9 @@ def notify(cam, message, image, predictions, config, st, ha):
                     vehicle_message = make
                 if notify_vehicle:
                     if vehicles[0]['camName'] == 'shed':
-                        st.echo_speaks('Vehicle in front of garage: ' + vehicle_message)
+                        ha.echo_speaks('Vehicle in front of garage: ' + vehicle_message)
                     else:
-                        st.echo_speaks('Vehicle in driveway: ' + vehicle_message)
+                        ha.echo_speaks('Vehicle in driveway: ' + vehicle_message)
                 # don't announce plate
                 if plate_name is not None:
                     vehicle_message += ' ' + plate_name
@@ -219,13 +222,16 @@ def notify(cam, message, image, predictions, config, st, ha):
             traceback.print_exc(file=sys.stdout)
             print('Failed to enrich via sighthound')
 
-    if has_package and priority >= 0:
+    if has_package and (priority >= 0 or has_dog):
         prob = max(map(lambda x: x['probability'], packages))
-        if prob > 0.9:
+        print(f"has_package={has_package}, has_dog={has_dog}, prob={prob}, mode={mode}")
+        if has_package and has_dog:
+            ha.echo_speaks('Rufus is opening package near {}'.format(packages[0]['camName']))
+        elif prob > 0.9:
             if len(packages) == 1:
-                st.echo_speaks('Package delivered near {}'.format(packages[0]['camName']))
+                ha.echo_speaks('Package delivered near {}'.format(packages[0]['camName']))
             else:
-                st.echo_speaks('{} packages delivered near {}'.format(len(packages), packages[0]['camName']))
+                ha.echo_speaks('{} packages delivered near {}'.format(len(packages), packages[0]['camName']))
         else:
             print("Not speaking package delivery because probability {} < 0.9".format(prob))
             if not has_dog:
