@@ -1,4 +1,4 @@
-# The steps implemented in the object detection sample code: 
+# The steps implemented in the object detection sample code:
 # 1. for an image of width and height being (w, h) pixels, resize image to (w', h'), where w/h = w'/h' and w' x h' = 262144
 # 2. resize network input size to (w', h')
 # 3. pass the image to network and do inference
@@ -10,14 +10,15 @@ import time
 
 
 class ObjectDetection(object):
-    """Class for Custom Vision's exported object detection model
-    """
+    """Class for Custom Vision's exported object detection model"""
 
-    ANCHORS = np.array([[0.573, 0.677], [1.87, 2.06], [3.34, 5.47], [7.88, 3.53], [9.77, 9.17]])
+    ANCHORS = np.array(
+        [[0.573, 0.677], [1.87, 2.06], [3.34, 5.47], [7.88, 3.53], [9.77, 9.17]]
+    )
     IOU_THRESHOLD = 0.45
     DEFAULT_INPUT_SIZE = 512 * 512
 
-    def __init__(self, labels, prob_threshold=0.10, max_detections = 20, scale=4):
+    def __init__(self, labels, prob_threshold=0.10, max_detections=20, scale=4):
         """Initialize the class
 
         Args:
@@ -37,8 +38,7 @@ class ObjectDetection(object):
         return np.where(x > 0, 1 / (1 + np.exp(-x)), np.exp(x) / (1 + np.exp(x)))
 
     def _non_maximum_suppression(self, boxes, class_probs, max_detections):
-        """Remove overlapping bouding boxes
-        """
+        """Remove overlapping bouding boxes"""
         assert len(boxes) == len(class_probs)
 
         max_detections = min(max_detections, len(boxes))
@@ -84,10 +84,16 @@ class ObjectDetection(object):
 
             # Set the probability of overlapping predictions to zero, and udpate max_probs and max_classes.
             class_probs[overlapping_indices, max_classes[i]] = 0
-            max_probs[overlapping_indices] = np.amax(class_probs[overlapping_indices], axis=1)
-            max_classes[overlapping_indices] = np.argmax(class_probs[overlapping_indices], axis=1)
+            max_probs[overlapping_indices] = np.amax(
+                class_probs[overlapping_indices], axis=1
+            )
+            max_classes[overlapping_indices] = np.argmax(
+                class_probs[overlapping_indices], axis=1
+            )
 
-        assert len(selected_boxes) == len(selected_classes) and len(selected_boxes) == len(selected_probs)
+        assert len(selected_boxes) == len(selected_classes) and len(
+            selected_boxes
+        ) == len(selected_probs)
         return selected_boxes, selected_classes, selected_probs
 
     def _extract_bb(self, prediction_output, anchors):
@@ -102,8 +108,14 @@ class ObjectDetection(object):
         outputs = prediction_output.reshape((height, width, num_anchor, -1))
 
         # Extract bouding box information
-        x = (self._logistic(outputs[..., 0]) + np.arange(width)[np.newaxis, :, np.newaxis]) / width
-        y = (self._logistic(outputs[..., 1]) + np.arange(height)[:, np.newaxis, np.newaxis]) / height
+        x = (
+            self._logistic(outputs[..., 0])
+            + np.arange(width)[np.newaxis, :, np.newaxis]
+        ) / width
+        y = (
+            self._logistic(outputs[..., 1])
+            + np.arange(height)[:, np.newaxis, np.newaxis]
+        ) / height
         w = np.exp(outputs[..., 2]) * anchors[:, 0][np.newaxis, np.newaxis, :] / width
         h = np.exp(outputs[..., 3]) * anchors[:, 1][np.newaxis, np.newaxis, :] / height
 
@@ -117,8 +129,14 @@ class ObjectDetection(object):
 
         # Get class probabilities for the bounding boxes.
         class_probs = outputs[..., 5:]
-        class_probs = np.exp(class_probs - np.amax(class_probs, axis=3)[..., np.newaxis])
-        class_probs = class_probs / np.sum(class_probs, axis=3)[..., np.newaxis] * objectness[..., np.newaxis]
+        class_probs = np.exp(
+            class_probs - np.amax(class_probs, axis=3)[..., np.newaxis]
+        )
+        class_probs = (
+            class_probs
+            / np.sum(class_probs, axis=3)[..., np.newaxis]
+            * objectness[..., np.newaxis]
+        )
         class_probs = class_probs.reshape(-1, num_class)
 
         assert len(boxes) == len(class_probs)
@@ -127,19 +145,21 @@ class ObjectDetection(object):
     def predict_image(self, image):
         start = time.time()
         inputs = self.preprocess(image)
-        #print("Preprocess={}".format(time.time() - start))
+        # print("Preprocess={}".format(time.time() - start))
         start = time.time()
         prediction_outputs = self.predict(inputs)
-        #print("Predict={}".format(time.time() - start))
+        # print("Predict={}".format(time.time() - start))
         return self.postprocess(prediction_outputs)
 
     def preprocess(self, image):
         image = image.convert("RGB") if image.mode != "RGB" else image
-        ratio = math.sqrt(self.DEFAULT_INPUT_SIZE * self.scale / image.width / image.height)
+        ratio = math.sqrt(
+            self.DEFAULT_INPUT_SIZE * self.scale / image.width / image.height
+        )
         new_width = int(image.width * ratio)
         new_height = int(image.height * ratio)
-        new_width = 32 * round(new_width / 32);
-        new_height = 32 * round(new_height / 32);
+        new_width = 32 * round(new_width / 32)
+        new_height = 32 * round(new_height / 32)
         image = image.resize((new_width, new_height))
         return image
 
@@ -151,7 +171,7 @@ class ObjectDetection(object):
         raise NotImplementedError
 
     def postprocess(self, prediction_outputs):
-        """ Extract bounding boxes from the model outputs.
+        """Extract bounding boxes from the model outputs.
 
         Args:
             prediction_outputs: Output from the object detection model. (H x W x C)
@@ -163,21 +183,29 @@ class ObjectDetection(object):
 
         # Remove bounding boxes whose confidence is lower than the threshold.
         max_probs = np.amax(class_probs, axis=1)
-        index, = np.where(max_probs > self.prob_threshold)
+        (index,) = np.where(max_probs > self.prob_threshold)
         index = index[(-max_probs[index]).argsort()]
 
         # Remove overlapping bounding boxes
-        selected_boxes, selected_classes, selected_probs = self._non_maximum_suppression(boxes[index],
-                                                                                         class_probs[index],
-                                                                                         self.max_detections)
+        (
+            selected_boxes,
+            selected_classes,
+            selected_probs,
+        ) = self._non_maximum_suppression(
+            boxes[index], class_probs[index], self.max_detections
+        )
 
-        return [{'probability': round(float(selected_probs[i]), 8),
-                 'tagId': int(selected_classes[i]),
-                 'tagName': self.labels[selected_classes[i]],
-                 'boundingBox': {
-                     'left': round(float(selected_boxes[i][0]), 8),
-                     'top': round(float(selected_boxes[i][1]), 8),
-                     'width': round(float(selected_boxes[i][2]), 8),
-                     'height': round(float(selected_boxes[i][3]), 8)
-                 }
-                 } for i in range(len(selected_boxes))]
+        return [
+            {
+                "probability": round(float(selected_probs[i]), 8),
+                "tagId": int(selected_classes[i]),
+                "tagName": self.labels[selected_classes[i]],
+                "boundingBox": {
+                    "left": round(float(selected_boxes[i][0]), 8),
+                    "top": round(float(selected_boxes[i][1]), 8),
+                    "width": round(float(selected_boxes[i][2]), 8),
+                    "height": round(float(selected_boxes[i][3]), 8),
+                },
+            }
+            for i in range(len(selected_boxes))
+        ]

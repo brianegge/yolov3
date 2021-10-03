@@ -2,7 +2,7 @@ import configparser
 from smartthings import SmartThings
 
 config = configparser.ConfigParser()
-config.read('config.txt')
+config.read("config.txt")
 
 st = SmartThings(config)
 # st.set_st_scene("House Cleaning", config)
