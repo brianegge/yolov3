@@ -20,10 +20,10 @@ def test_door_contacts():
 
 
 def test_mode():
-    assert ha.mode() in ["home"]
+    assert ha.mode() in ["home","night"]
 
 
 # ha.turn_on_outside_lights()
 # print("open_garage_door={}".format(st.open_garage_door()))
 # ha.deer_alert('tree line')
-print(ha.echo_speaks("hello world"))
+#print(ha.echo_speaks("hello world"))

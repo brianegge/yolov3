@@ -48,6 +48,10 @@ class Camera:
                 globber = Path(self.ftp_path).glob("**/*.jpg")
             try:
                 f = next(globber)
+            except OSError as e:
+                print(f"Error scanning {self.ftp_path}: {e}\n{e.args}")
+                self.globber = None
+                return None
             except StopIteration:
                 self.globber = None
                 return None
