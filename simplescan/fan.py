@@ -1,6 +1,7 @@
+import asyncio
+
 import aiohttp
 import pysmartthings
-import asyncio
 
 token = "2fc029f1-a444-4464-99cc-0b6613934922"
 

@@ -1,27 +1,30 @@
-import os
-import time
-import sys
-from io import BytesIO, StringIO
-from object_detection import ObjectDetection
-from utils import bb_intersection_over_union, draw_bbox, draw_road
-import numpy as np
-from pprint import pprint
 import json
-from timeit import default_timer as timer
-import requests
-from requests.auth import HTTPDigestAuth
-from notify import notify
-from datetime import date, datetime, timedelta
-from PIL import UnidentifiedImageError
-from PIL import Image
-import cv2
+import os
+import sys
+import time
 import traceback
+from datetime import date, datetime, timedelta
+from io import BytesIO, StringIO
 from pathlib import Path
+from pprint import pprint
+from timeit import default_timer as timer
+from urllib.parse import urlparse
+
+import cv2
+import numpy as np
+import requests
+from object_detection import ObjectDetection
+from PIL import Image, UnidentifiedImageError
+from requests.auth import HTTPDigestAuth
+
+from notify import notify
+from utils import bb_intersection_over_union, draw_bbox, draw_road
 
 
 class Camera:
     def __init__(self, config, excludes):
         self.name = config["name"]
+        self.ha_name = self.name.replace(" ", "_")
         self.config = config
         self.objects = set()
         self.prev_predictions = {}
@@ -105,7 +108,20 @@ class Camera:
                 self.fails += 1
                 self.session = None
                 self.error = sys.exc_info()[0]
+                if self.skip > 12:
+                    self.reboot()
         return self
+
+    def reboot(self):
+        # "http://treeline-cam.home/cgi-bin/magicBox.cgi?action=reboot"
+        url = (
+            urlparse(self.config["uri"])
+            ._replace(path="/cgi-bin/magicBox.cgi", query="action=reboot")
+            .geturl()
+        )
+        print(f"Rebooting {self.name}: {url}")
+        with self.session.get(url) as resp:
+            resp.raise_for_status()
 
     def resize(self):
         hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
@@ -131,7 +147,7 @@ def add_centers(predictions):
         center["y"] = bbox["top"] + bbox["height"] / 2.0
 
 
-def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
+def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_client):
     threshold = config["detector"].getfloat("threshold")
     smartthings = config["smartthings"]
     image = cam.image
@@ -167,7 +183,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
         p["camName"] = cam.name
     add_centers(predictions)
     # remove road
-    if cam.name in ["driveway"]:  #'peach tree'
+    if cam.name in ["driveway", "peach tree"]:
         for p in predictions:
             x = p["center"]["x"]
             if x < 0.651:
@@ -176,7 +192,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
                 road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
             p["road_y"] = road_y
             if p["center"]["y"] < road_y and (
-                p["tagName"] in ["vehicle", "person", "package"]
+                p["tagName"] in ["vehicle", "person", "package", "dog"]
             ):
                 p["ignore"] = "road"
     elif cam.name == "garage-l":
@@ -230,7 +246,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
             save_dir,
             datetime.now().strftime("%H%M%S")
             + "-"
-            + cam.name
+            + cam.name.replace(" ", "_")
             + "-"
             + "_".join(departed_objects)
             + "-departed",
@@ -239,6 +255,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
             image.save(basename + ".jpg")
         else:
             cv2.imwrite(basename + ".jpg", image)
+        cam.objects = valid_objects
     # Always open garage door, we can call this many times
     if smartthings:
         if (
@@ -255,6 +272,16 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
             print("Letting cat out")
             st.crack_garage_door()
 
+    if "vehicle" in valid_objects or "vehicle" in departed_objects:
+        count = len(
+            list(
+                filter(
+                    lambda p: p["tagName"] == "vehicle" and not "ignore" in p,
+                    valid_predictions,
+                )
+            )
+        )
+        mqtt_client.publish("{}/vehicle/count".format(cam.name), count, retain=True)
     colors = config["colors"]
     uniq_predictions = []
     for p in valid_predictions:
@@ -274,7 +301,8 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
         for prev_box in prev_class:
             iou = bb_intersection_over_union(prev_box, p["boundingBox"])
             if iou > 0.5:
-                p["ignore"] = "prev-iou={:.2f}".format(iou)
+                # p["ignore"] = "prev-iou={:.2f}".format(iou)
+                p["iou"] = iou
                 skip = True
                 priority = cam.prior_priority
                 break
@@ -334,7 +362,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
                 save_dir,
                 cam.prior_time.strftime("%H%M%S")
                 + "-"
-                + cam.name
+                + cam.name.replace(" ", "_")
                 + "-"
                 + "_".join(valid_objects)
                 + "-prior",
@@ -348,7 +376,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
             save_dir,
             datetime.now().strftime("%H%M%S")
             + "-"
-            + cam.name
+            + cam.name.replace(" ", "_")
             + "-"
             + "_".join(valid_objects),
         )
@@ -365,11 +393,18 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha):
     cam.prior_priority = priority
 
     def format_prediction(p):
-        if "ignore" in p:
+        if "iou" in p:
+            return "{}:{:.2f}:iou={:.2f}".format(
+                p["tagName"], p["probability"], p["iou"]
+            )
+        elif "ignore" in p:
             return "{}:{:.2f}:{}".format(p["tagName"], p["probability"], p["ignore"])
         else:
-            return "{}:{:.2f}:p{}".format(
-                p["tagName"], p["probability"], p.get("priority", "?")
+            return "{}:{:.2f}:p{}-{}".format(
+                p["tagName"],
+                p["probability"],
+                p.get("priority", "?"),
+                p.get("priority_type", "?"),
             )
 
     return (

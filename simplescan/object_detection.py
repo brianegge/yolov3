@@ -3,10 +3,11 @@
 # 2. resize network input size to (w', h')
 # 3. pass the image to network and do inference
 # (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
-import numpy as np
 import math
-from pprint import pprint
 import time
+from pprint import pprint
+
+import numpy as np
 
 
 class ObjectDetection(object):

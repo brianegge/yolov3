@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 
-import os
-from tempfile import gettempdir
 import argparse
-import cv2
-from onnx_object_detection import ONNXRuntimeObjectDetection
-from utils import draw_bbox
+import os
 from pprint import pprint
+from tempfile import gettempdir
+
+import cv2
 import numpy as np
-from PIL import Image
 from colorhash import ColorHash
+from PIL import Image
+
+from onnx_object_detection import ONNXRuntimeObjectDetection
 from sort import Sort
+from utils import draw_bbox
 
 parser = argparse.ArgumentParser(description="Process video")
 parser.add_argument("input", metavar="I", nargs="+", help="One or more input videos")

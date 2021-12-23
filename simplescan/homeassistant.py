@@ -1,8 +1,8 @@
-import requests
 import datetime
 from pprint import pprint
-from urllib.parse import quote
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
+
+import requests
 
 
 class HomeAssistant(object):
@@ -54,11 +54,46 @@ class HomeAssistant(object):
         except KeyError:
             raise KeyError('No such device "{}"'.format(name))
 
-    def get_switch(self, switch):
+    def get_state(self, entity):
         response = requests.get(
-            f"{self.api}states/{switch}", headers=self.headers
+            f"{self.api}states/{entity}", headers=self.headers
         ).json()
-        return response["state"] == "on"
+        if "state" in response:
+            return response["state"] == "on"
+        print(response)
+        raise RuntimeError(f"Invalid response from entity {entity}={response}")
+
+    def set_input_boolean(self, switch, state):
+        json = {
+            "entity_id": switch,
+        }
+        if state:
+            response = requests.post(
+                f"{self.api}services/input_boolean/turn_on",
+                json=json,
+                headers=self.headers,
+            )
+        else:
+            response = requests.post(
+                f"{self.api}services/input_boolean/turn_off",
+                json=json,
+                headers=self.headers,
+            )
+        if response.status_code != 200:
+            print(f"Set input_boolean {switch} to {state}={response.content}")
+        return response
+
+    def set_notify_person(self, state):
+        return self.set_input_boolean("input_boolean.person_detector", state)
+
+    def set_notify_vehicle(self, state):
+        return self.set_input_boolean("input_boolean.vehicle_detector", state)
+
+    def get_door_left(self):
+        return self.get_state("binary_sensor.konnected_198e05_zone_4")
+
+    def get_door_right(self):
+        return self.get_state("binary_sensor.konnected_198e05_zone_5")
 
     def get_presence(self, person):
         response = requests.get(
@@ -67,10 +102,10 @@ class HomeAssistant(object):
         return response["state"] == "home"
 
     def should_notify_vehicle(self):
-        return self.get_switch("switch.vehicle_detector")
+        return self.get_state("input_boolean.vehicle_detector")
 
     def should_notify_person(self):
-        return self.get_switch("switch.person_detector")
+        return self.get_state("input_boolean.person_detector")
 
     def echo_speaks(self, message):
         print("Speaking {}".format(message))
@@ -83,7 +118,7 @@ class HomeAssistant(object):
         return r.content.decode("utf-8")
 
     def mode(self):
-        if self.get_switch("input_boolean.night_mode"):
+        if self.get_state("input_boolean.night_mode"):
             return "night"
         elif self.get_presence("group.everyone"):
             return "home"
@@ -91,10 +126,8 @@ class HomeAssistant(object):
             return "away"
 
     def suppress_notify_person(self):
-        r = requests.get(self.config["suppress_notify_person"])
-        c = r.content.decode("utf-8")
         print("Keep person notify suppressed={}".format(c))
-        return r.content.decode("utf-8")
+        return self.set_notify_person(False)
 
     def turn_on_outside_lights(self):
         r = requests.post(

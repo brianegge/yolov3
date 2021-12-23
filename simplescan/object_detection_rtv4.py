@@ -1,18 +1,20 @@
+import math
 import os
-from object_detection import ObjectDetection
-import onnxruntime
-import onnx
 import tempfile
-import numpy as np
-import cv2
-import tensorrt as trt
-import common
-import pycuda.driver as cuda
-import pycuda.autoinit
 import time
 from pprint import pprint
-import math
+
+import cv2
+import numpy as np
+import onnx
+import onnxruntime
+import pycuda.autoinit
+import pycuda.driver as cuda
+import tensorrt as trt
+from object_detection import ObjectDetection
 from PIL import Image
+
+import common
 
 TRT_LOGGER = trt.Logger()
 

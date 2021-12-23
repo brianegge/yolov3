@@ -1,7 +1,8 @@
-from PIL import ImageDraw, ImageFont, ImageColor
-from pprint import pprint
-from pathlib import Path
 import os
+from pathlib import Path
+from pprint import pprint
+
+from PIL import ImageColor, ImageDraw, ImageFont
 
 
 def draw_bbox(image, p, color, label=None, width=4):
@@ -69,15 +70,18 @@ def bb_intersection_over_union(boxA, boxB):
         return iou
 
 
-def cleanup(directory):
-    directory = Path(directory)
+def cleanup(directory_name):
+    directory = Path(directory_name)
+    if not directory.exists():
+        print(f"\"{directory_name}\" does not exist")
+        return
     for item in directory.iterdir():
         (base, ext) = os.path.splitext(str(item))
         if item.is_dir():
             cleanup(item)
-        elif ext in [".idx", ".dav", ".tmp", ".dav_", ".idx_"]:
-            item.unlink()
-        else:
+        elif ext in [".jpg"]:
             print("Not removing {} ({})".format(item, ext))
+        else:
+            item.unlink()
     if next(directory.iterdir(), None) is None:
         directory.rmdir()

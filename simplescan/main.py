@@ -4,27 +4,52 @@
 # 3. pass the image to network and do inference
 # (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
 # scale is a multiplier of the default model size
-import os
-import subprocess
-import sys
-import configparser
-from timeit import default_timer as timer
-from detect import detect, Camera
-from onnx_object_detection import ONNXRuntimeObjectDetection
-from object_detection_rt import ONNXTensorRTObjectDetection
-from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
+import argparse
 import asyncio
 import concurrent.futures
-from datetime import datetime, timedelta
-import requests
-import faulthandler, signal
-import argparse
+import configparser
+import faulthandler
 import json
+import logging
+import os
+import signal
+import subprocess
+import sys
 import time
+from datetime import datetime, timedelta
+from timeit import default_timer as timer
+
+import paho.mqtt.client as paho
+import requests
 import sdnotify
-from smartthings import SmartThings
+
+from detect import Camera, detect
 from homeassistant import HomeAssistant
+from object_detection_rt import ONNXTensorRTObjectDetection
+from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
+from onnx_object_detection import ONNXRuntimeObjectDetection
+from smartthings import SmartThings
 from utils import cleanup
+
+log = logging.getLogger("aicam")
+
+
+def on_publish(client, userdata, mid):
+    log.info("on_publish({},{})".format(userdata, mid))
+
+
+# The callback for when the client receives a CONNACK response from the server.
+def on_connect(client, userdata, flags, rc):
+    log.info("mqtt connected")
+    client.publish("aicam/status", "online", retain=True)
+
+
+def on_disconnect(client, userdata, rc):
+    log.info("mqtt disconnected reason  " + str(rc))
+
+
+def on_message(self, mqtt_client, obj, msg):
+    log.info("on_message()")
 
 
 async def main(options):
@@ -35,6 +60,15 @@ async def main(options):
     detector_config = config["detector"]
     color_model_config = config["color-model"]
     grey_model_config = config["grey-model"]
+    mqtt_client = paho.Client("aicam")
+    mqtt_client.enable_logger(logger=log)
+    mqtt_client.on_publish = on_publish
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_disconnect = on_disconnect
+    mqtt_client.on_message = on_message
+    mqtt_client.connect("mqtt.home", 1883)
+    mqtt_client.subscribe("test")  # get on connect messages
+    mqtt_client.loop_start()
 
     # Load labels
     with open(detector_config["labelfile-path"], "r") as f:
@@ -73,6 +107,22 @@ async def main(options):
     async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=async_cameras)
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
+    lwt = "aicam/status"
+    mqtt_client.will_set(lwt, "offline", retain=True)
+    for cam in filter(lambda c: c.vehicle_check, cams):
+        j = {
+            "name": f"{cam.name} Vehicle Count",
+            "state_topic": "{}/vehicle/count".format(cam.ha_name),
+            "state_class": "measurement",
+            "uniq_id": "{}-vehicle".format(cam.ha_name),
+            "availability_topic": lwt,
+        }
+        mqtt_client.publish(
+            "homeassistant/sensor/{}-vehicle/config".format(cam.ha_name),
+            json.dumps(j),
+            retain=True,
+        )
+
     sd.notify("READY=1")
     sd.notify("STATUS=Running")
     cleanup_time = datetime(1970, 1, 1, 0, 0, 0)
@@ -87,7 +137,14 @@ async def main(options):
                 if cam.poll() is None:
                     cam.capture()
                 p, m = detect(
-                    cam, color_model, grey_model, vehicle_model, config, st, ha
+                    cam,
+                    color_model,
+                    grey_model,
+                    vehicle_model,
+                    config,
+                    st,
+                    ha,
+                    mqtt_client,
                 )
                 prediction_time += p
                 messages.append(m)
@@ -106,7 +163,14 @@ async def main(options):
                     cam = f.result()
                     if cam:
                         p, m = detect(
-                            cam, color_model, grey_model, vehicle_model, config, st, ha
+                            cam,
+                            color_model,
+                            grey_model,
+                            vehicle_model,
+                            config,
+                            st,
+                            ha,
+                            mqtt_client,
                         )
                         prediction_time += p
                         messages.append(m)
@@ -146,6 +210,7 @@ async def main(options):
                                 config,
                                 st,
                                 ha,
+                                mqtt_client,
                             )
                             prediction_time += p
                             messages.append(m)
@@ -161,6 +226,9 @@ async def main(options):
             % ((end_time - start_time), prediction_time),
             flush=True,
         )
+        if (end_time - start_time) < 0.06:
+            print("Nothing to do, waiting 1 second")
+            time.sleep(1.0)
         # if prediction_time < 0.01:
         #    print("Cameras appear down, waiting 30 seconds")
         #    time.sleep(30)

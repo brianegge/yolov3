@@ -1,18 +1,20 @@
-import requests
-from pprint import pprint
-from io import BytesIO
-import aiohttp
 import json
+import logging
+import os
+import re
+import sys
 import traceback
 from datetime import date, datetime
-import sys
-import os
+from io import BytesIO
+from pprint import pprint
+
+import aiohttp
+import pysmartthings
+import requests
+
+import sighthound
 
 sys.path.insert(0, "/home/egge/detector/simplescan/pysmartthings/pysmartthings")
-import pysmartthings
-import sighthound
-import re
-import logging
 
 # logging.basicConfig(level=logging.DEBUG)
 
@@ -67,6 +69,7 @@ def notify(cam, message, image, predictions, config, st, ha):
     has_package = len(packages) > 0
     if has_vehicles:
         notify_vehicle = ha.should_notify_vehicle()
+        print(f"ha.should_notify_vehicle={notify_vehicle}")
     else:
         notify_vehicle = False
     if has_person and not cam.name == "peach tree":
@@ -74,8 +77,8 @@ def notify(cam, message, image, predictions, config, st, ha):
     else:
         notify_person = False
     if notify_person:
-        door_left = ha.get_switch("binary_sensor.door_left_contact")
-        door_right = ha.get_switch("binary_sensor.door_right_contact")
+        door_left = ha.get_door_left()
+        door_right = ha.get_door_right()
         do_ignore = (
             cam.name in ["deck", "play"] and (door_left or door_left) and mode == "home"
         )
@@ -231,7 +234,7 @@ def notify(cam, message, image, predictions, config, st, ha):
             save_dir,
             datetime.now().strftime("%H%M%S")
             + "-"
-            + vehicles[0]["camName"]
+            + vehicles[0]["camName"].replace(" ", "_")
             + "-"
             + "sighthound.jpg",
         )
@@ -244,7 +247,7 @@ def notify(cam, message, image, predictions, config, st, ha):
                 save_dir,
                 datetime.now().strftime("%H%M%S")
                 + "-"
-                + vehicles[0]["camName"]
+                + vehicles[0]["camName"].replace(" ", "_")
                 + "-"
                 + "sighthound.txt",
             )

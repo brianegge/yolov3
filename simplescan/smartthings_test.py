@@ -1,4 +1,5 @@
 import configparser
+
 from smartthings import SmartThings
 
 config = configparser.ConfigParser()

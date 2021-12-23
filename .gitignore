@@ -252,3 +252,6 @@ fabric.properties
 
 simplescan/config.txt
 simplescan/config-test.txt
+bin/*
+lib64
+share/*
