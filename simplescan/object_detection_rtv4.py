@@ -61,7 +61,9 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network(
             common.EXPLICIT_BATCH
         ) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
-            builder.max_workspace_size = 1 << 28  # 256MiB
+            #builder.max_workspace_size = 1 << 28  # 256MiB
+            config = builder.create_builder_config()
+            config.max_workspace_size = 1 << 20
             builder.max_batch_size = 1
             # Parse model file
             if not os.path.exists(onnx_file_path):
@@ -96,7 +98,10 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                     onnx_file_path
                 )
             )
-            engine = builder.build_cuda_engine(network)
+            plan = builder.build_serialized_network(network, config)
+            with trt.Runtime(TRT_LOGGER) as runtime:
+                engine = runtime.deserialize_cuda_engine(plan)
+            #engine = builder.build_cuda_engine(network)
             if engine:
                 print("Completed creating Engine")
                 with open(engine_file_path, "wb") as f:

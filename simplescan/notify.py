@@ -9,12 +9,9 @@ from io import BytesIO
 from pprint import pprint
 
 import aiohttp
-import pysmartthings
 import requests
 
 import sighthound
-
-sys.path.insert(0, "/home/egge/detector/simplescan/pysmartthings/pysmartthings")
 
 # logging.basicConfig(level=logging.DEBUG)
 

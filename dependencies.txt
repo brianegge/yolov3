@@ -1,0 +1,12 @@
+attr
+paho-mqtt
+requests
+sdnotify
+scikit-build
+opencv-python
+pillow
+aiohttp
+onnx
+onnxruntime
+pycuda
+logger
