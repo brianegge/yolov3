@@ -179,7 +179,7 @@ async def main(options):
                     return
 
             if count == 0:
-                print("Scanning ", end="")
+                print("Snapshoting ", end="")
                 # scan each camera
                 for cam in filter(
                     lambda cam: (datetime.now() - cam.prior_time).total_seconds() > 10,
@@ -226,7 +226,7 @@ async def main(options):
             % ((end_time - start_time), prediction_time),
             flush=True,
         )
-        if (end_time - start_time) < 0.06:
+        if (end_time - start_time) < 0.1:
             print("Nothing to do, waiting 1 second")
             time.sleep(1.0)
         # if prediction_time < 0.01:

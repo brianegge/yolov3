@@ -83,9 +83,6 @@ class HomeAssistant(object):
             print(f"Set input_boolean {switch} to {state}={response.content}")
         return response
 
-    def set_notify_person(self, state):
-        return self.set_input_boolean("input_boolean.person_detector", state)
-
     def set_notify_vehicle(self, state):
         return self.set_input_boolean("input_boolean.vehicle_detector", state)
 
@@ -126,8 +123,13 @@ class HomeAssistant(object):
             return "away"
 
     def suppress_notify_person(self):
-        print("Keep person notify suppressed={}".format(c))
-        return self.set_notify_person(False)
+        print("Keep person notify suppressed")
+        r = requests.post(
+            f"{self.api}services/script/turn_on",
+            json={"entity_id": "script.pause_person_detector"},
+            headers=self.headers,
+        )
+        return r.content.decode("utf-8")
 
     def turn_on_outside_lights(self):
         r = requests.post(

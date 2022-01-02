@@ -18,7 +18,7 @@ from PIL import Image, UnidentifiedImageError
 from requests.auth import HTTPDigestAuth
 
 from notify import notify
-from utils import bb_intersection_over_union, draw_bbox, draw_road
+from utils import bb_intersection_over_union, draw_bbox, draw_road, cleanup
 
 
 class Camera:
@@ -34,6 +34,7 @@ class Camera:
         self.capture_async = self.config.getboolean("async", False)
         self.error = None
         self.image = None
+        self.source = None
         self.prior_image = None
         self.prior_time = datetime.fromtimestamp(0)
         self.prior_priority = -4
@@ -57,12 +58,13 @@ class Camera:
                 return None
             except StopIteration:
                 self.globber = None
+                cleanup(self.ftp_path)
                 return None
-            print("found {}".format(f))
             img = cv2.imread(str(f))
             os.remove(f)
             if img is not None and len(img) > 0:
                 self.image = img
+                self.source = f
                 self.resize()
                 return self
             else:
@@ -80,6 +82,7 @@ class Camera:
         if "file" in self.config:
             self.is_file = True
             self.image = cv2.imread(self.config["file"])
+            self.source = self.config["file"]
             self.resize()
         else:
             if self.session == None:
@@ -98,11 +101,13 @@ class Camera:
                         self.error = "empty"
                         return self
                     self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
+                    self.source = self.config["uri"]
                     self.resize()
                     self.error = None
                     self.fails = 0
             except:
                 self.image = None
+                self.source = None
                 self.resized = None
                 self.skip = 2 ** self.fails
                 self.fails += 1
@@ -120,8 +125,13 @@ class Camera:
             .geturl()
         )
         print(f"Rebooting {self.name}: {url}")
-        with self.session.get(url) as resp:
-            resp.raise_for_status()
+        try:
+            r = requests.get(
+                url, auth=HTTPDigestAuth(self.config["user"], self.config["password"])
+            )
+            r.raise_for_status()
+        except:
+            print(sys.exc_info()[0])
 
     def resize(self):
         hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
@@ -385,7 +395,8 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
         else:
             cv2.imwrite(basename + ".jpg", image)
         with open(basename + ".txt", "w") as file:
-            file.write(json.dumps(predictions))
+            j = {'source':str(cam.source),'time':str(datetime.now()), 'predictions':predictions}
+            file.write(json.dumps(j, indent=4))
         im_pil.save(basename + "-annotated.jpg")
     else:
         cam.prior_image = image

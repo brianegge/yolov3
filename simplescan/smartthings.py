@@ -108,12 +108,6 @@ class SmartThings(object):
     #    c = r.content.decode("utf-8")
     #    return c.lower()
 
-    def suppress_notify_person(self):
-        r = requests.get(self.config["suppress_notify_person"])
-        c = r.content.decode("utf-8")
-        print("Keep person notify suppressed={}".format(c))
-        return r.content.decode("utf-8")
-
     # def turn_on_outside_lights(self):
     #    r = requests.get(self.config['turn_on_outside_lights'])
     #    c = r.content.decode("utf-8")

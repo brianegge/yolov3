@@ -1,4 +1,5 @@
 import os
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from pprint import pprint
 
@@ -70,18 +71,22 @@ def bb_intersection_over_union(boxA, boxB):
         return iou
 
 
-def cleanup(directory_name):
+def cleanup(directory_name, children_only=True):
     directory = Path(directory_name)
     if not directory.exists():
         print(f'"{directory_name}" does not exist')
         return
-    for item in directory.iterdir():
-        (base, ext) = os.path.splitext(str(item))
-        if item.is_dir():
-            cleanup(item)
-        elif ext in [".jpg"]:
-            print("Not removing {}".format(item))
-        else:
-            item.unlink()
-    if next(directory.iterdir(), None) is None:
-        directory.rmdir()
+    try:
+        for item in directory.iterdir():
+            (base, ext) = os.path.splitext(str(item))
+            if item.is_dir():
+                cleanup(item, children_only=False)
+            elif ext in [".jpg"]:
+                print("Not removing image {}".format(item))
+            else:
+                item.unlink()
+        if next(directory.iterdir(), None) is None and children_only == False:
+            directory.rmdir()
+    except OSError:
+        # new files may be created during cleanup
+        pass

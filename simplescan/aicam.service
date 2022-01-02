@@ -2,7 +2,7 @@
 Description=Process ip cameras
 After=multi-user.target
 StartLimitIntervalSec=0
-RequiresMountsFor=/mnt/elements/capture
+#RequiresMountsFor=/mnt/elements/capture
 
 [Service]
 Restart=always

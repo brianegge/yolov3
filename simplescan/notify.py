@@ -84,7 +84,7 @@ def notify(cam, message, image, predictions, config, st, ha):
                 f"Ignoring person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
             )
             notify_person = False
-            st.suppress_notify_person()
+            ha.suppress_notify_person()
         else:
             print(
                 f"Notifying person because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
@@ -109,7 +109,7 @@ def notify(cam, message, image, predictions, config, st, ha):
         elif tagName == "person" and not notify_person:
             i = -2
             # we are still outside, keep detection off
-            st.suppress_notify_person()
+            ha.suppress_notify_person()
             i_type = "person detection off"
         elif tagName == "vehicle" and not notify_vehicle:
             i = -2
