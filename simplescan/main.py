@@ -28,44 +28,58 @@ from homeassistant import HomeAssistant
 from object_detection_rt import ONNXTensorRTObjectDetection
 from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
 from onnx_object_detection import ONNXRuntimeObjectDetection
-from smartthings import SmartThings
 from utils import cleanup
 
 log = logging.getLogger("aicam")
+mlog = logging.getLogger("mqtt")
+kill_now = False
 
 
 def on_publish(client, userdata, mid):
-    log.info("on_publish({},{})".format(userdata, mid))
+    mlog.debug("on_publish({},{})".format(userdata, mid))
 
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
-    log.info("mqtt connected")
+    mlog.info("mqtt connected")
     client.publish("aicam/status", "online", retain=True)
 
 
 def on_disconnect(client, userdata, rc):
-    log.info("mqtt disconnected reason  " + str(rc))
+    mlog.info("mqtt disconnected reason  " + str(rc))
+    global kill_now
+    kill_now = True
 
 
 def on_message(self, mqtt_client, obj, msg):
-    log.info("on_message()")
+    mlog.info("on_message()")
+
+
+class GracefulKiller:
+    def __init__(self):
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+
+    def exit_gracefully(self, *args):
+        global kill_now
+        kill_now = True
 
 
 async def main(options):
     config = configparser.ConfigParser()
     config.read(options.config_file)
-    st = SmartThings(config)
     ha = HomeAssistant(config["homeassistant"])
     detector_config = config["detector"]
     color_model_config = config["color-model"]
     grey_model_config = config["grey-model"]
+    lwt = "aicam/status"
     mqtt_client = paho.Client("aicam")
-    mqtt_client.enable_logger(logger=log)
+    mqtt_client.enable_logger(logger=mlog)
     mqtt_client.on_publish = on_publish
     mqtt_client.on_connect = on_connect
     mqtt_client.on_disconnect = on_disconnect
     mqtt_client.on_message = on_message
+    mqtt_client.will_set(lwt, payload="offline", qos=0, retain=True)
     mqtt_client.connect("mqtt.home", 1883)
     mqtt_client.subscribe("test")  # get on connect messages
     mqtt_client.loop_start()
@@ -100,15 +114,13 @@ async def main(options):
             Camera(config["cam%d" % i], excludes.get(config["cam%d" % i]["name"], {}))
         )
         i += 1
-    print("Configured %i cams" % i)
+    log.info("Configured %i cams" % i)
     async_cameras = len(list(filter(lambda cam: cam.capture_async, cams)))
     # async_cameras = 4
-    print("%i async workers" % async_cameras)
+    log.info("%i async workers" % async_cameras)
     async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=async_cameras)
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-    lwt = "aicam/status"
-    mqtt_client.will_set(lwt, "offline", retain=True)
     for cam in filter(lambda c: c.vehicle_check, cams):
         j = {
             "name": f"{cam.name} Vehicle Count",
@@ -126,12 +138,15 @@ async def main(options):
     sd.notify("READY=1")
     sd.notify("STATUS=Running")
     cleanup_time = datetime(1970, 1, 1, 0, 0, 0)
-    while True:
+    killer = GracefulKiller()
+    global kill_now
+    while not kill_now:
         sd.notify("WATCHDOG=1")
         start_time = timer()
         prediction_time = 0.0
         capture_futures = []
         messages = []
+        log_line = ""
         if options.sync:
             for cam in cams:
                 if cam.poll() is None:
@@ -155,7 +170,7 @@ async def main(options):
                 except KeyboardInterrupt:
                     return
                 except requests.exceptions.ConnectionError:
-                    print("cam:%s poll:" % cam.name, sys.exc_info()[0])
+                    log.warning("cam:%s poll:" % cam.name, sys.exc_info()[0])
 
             count = 0
             for f in concurrent.futures.as_completed(capture_futures, timeout=180):
@@ -168,7 +183,6 @@ async def main(options):
                             grey_model,
                             vehicle_model,
                             config,
-                            st,
                             ha,
                             mqtt_client,
                         )
@@ -179,10 +193,10 @@ async def main(options):
                     return
 
             if count == 0:
-                print("Snapshoting ", end="")
                 # scan each camera
                 for cam in filter(
-                    lambda cam: (datetime.now() - cam.prior_time).total_seconds() > 10,
+                    lambda cam: (datetime.now() - cam.prior_time).total_seconds()
+                    > cam.interval,
                     cams,
                 ):
                     try:
@@ -190,13 +204,16 @@ async def main(options):
                             capture_futures.append(async_pool.submit(cam.capture))
                         else:
                             capture_futures.append(sync_pool.submit(cam.capture))
+                        count += 1
                     except KeyboardInterrupt:
                         return
                     except requests.exceptions.ConnectionError:
-                        print(
+                        log.warning(
                             "cam:%s requests.exceptions.ConnectionError:" % cam.name,
                             sys.exc_info()[0],
                         )
+                if count > 0:
+                    log_line = "Snapshoting "
 
                 for f in concurrent.futures.as_completed(capture_futures, timeout=180):
                     try:
@@ -208,7 +225,6 @@ async def main(options):
                                 grey_model,
                                 vehicle_model,
                                 config,
-                                st,
                                 ha,
                                 mqtt_client,
                             )
@@ -217,31 +233,35 @@ async def main(options):
                     except KeyboardInterrupt:
                         return
             else:
-                print("Reading ", end="")
+                log_line = "Reading "
 
         end_time = timer()
-        print(",".join(sorted(messages)), end="")
-        print(
-            ".. completed in %.2fs, spent %.2fs predicting"
-            % ((end_time - start_time), prediction_time),
-            flush=True,
-        )
-        if (end_time - start_time) < 0.1:
-            print("Nothing to do, waiting 1 second")
-            time.sleep(1.0)
-        # if prediction_time < 0.01:
-        #    print("Cameras appear down, waiting 30 seconds")
-        #    time.sleep(30)
-        if datetime.now() - cleanup_time > timedelta(minutes=60):
-            # script = os.path.join(os.path.dirname(__file__), 'cleanup.sh')
-            print("Cleaning up")
-            # subprocess.run(script, check=True)
-            for cam in filter(lambda cam: cam.ftp_path, cams):
-                cleanup(cam.ftp_path)
-                cam.globber = None
-            cleanup_time = datetime.now()
+        if count > 0:
+            log_line += ",".join(sorted(messages))
+            log_line += ".. completed in %.2fs, spent %.2fs predicting" % (
+                (end_time - start_time),
+                prediction_time,
+            )
+        if len(log_line) > 0:
+            log.debug(log_line)
+        if prediction_time < 0.1:
+            if datetime.now() - cleanup_time > timedelta(minutes=15):
+                log.debug("Cleaning up")
+                for cam in filter(lambda cam: cam.ftp_path, cams):
+                    cleanup(cam.ftp_path)
+                    cam.globber = None
+                cleanup_time = datetime.now()
+            else:
+                time.sleep(1.0)
         if "once" in detector_config:
             break
+    # graceful shutdown
+    log.info("Graceful shutdown initiated")
+    mqtt_client.disconnect()  # disconnect gracefully
+    mqtt_client.loop_stop()  # stops network loop
+    del color_model
+    del grey_model
+    del vehicle_model
 
 
 if __name__ == "__main__":
@@ -251,5 +271,21 @@ if __name__ == "__main__":
     parser.add_argument("--trt", action="store_true")
     parser.add_argument("--sync", action="store_true")
     parser.add_argument("config_file", nargs="?", default="config.txt")
+
+    handlers = [
+        logging.StreamHandler(),
+        # logging.FileHandler("/var/log/aicam.log"),
+    ]
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(name)-5s %(levelname)-4s %(message)s",
+        datefmt="%b-%d %H:%M",
+        handlers=handlers,
+    )
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.INFO)
+    logging.getLogger("detect").setLevel(logging.INFO)
+    mlog.setLevel(logging.INFO)
+    log.info("Starting")
     args = parser.parse_args()
     asyncio.get_event_loop().run_until_complete(main(args))
+    log.info("Graceful shutdown complete")

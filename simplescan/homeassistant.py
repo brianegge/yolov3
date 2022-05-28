@@ -1,8 +1,11 @@
 import datetime
+import logging
 from pprint import pprint
 from urllib.parse import quote, urljoin
 
 import requests
+
+log = logging.getLogger(__name__)
 
 
 class HomeAssistant(object):
@@ -14,7 +17,7 @@ class HomeAssistant(object):
         self.api = "http://homeassistant.home:8123/api/"
         response = requests.get(self.api, headers=self.headers)
         message = response.json()["message"]
-        print(f"Home Assistant {message}")
+        log.debug(f"Home Assistant {message}")
         assert message == "API running."
         self.names = {}
         response = requests.get(urljoin(self.api, "states"), headers=self.headers)
@@ -29,7 +32,7 @@ class HomeAssistant(object):
             json={"entity_id": f"scene.{scene}"},
             headers=self.headers,
         )
-        print(f"Turned on scene {scene}={r}")
+        log.info(f"Turned on scene {scene}={r}")
 
     def open_garage_door(self):
         raise NotImplementedError
@@ -46,7 +49,7 @@ class HomeAssistant(object):
         r = requests.post(
             f"{self.api}services/script/turn_on", json=json, headers=self.headers
         )
-        print(f"Deer alert={r}")
+        log.info(f"Deer alert={r}")
 
     def get_device(self, name):
         try:
@@ -60,7 +63,7 @@ class HomeAssistant(object):
         ).json()
         if "state" in response:
             return response["state"] == "on"
-        print(response)
+        log.debug(response)
         raise RuntimeError(f"Invalid response from entity {entity}={response}")
 
     def set_input_boolean(self, switch, state):
@@ -80,7 +83,7 @@ class HomeAssistant(object):
                 headers=self.headers,
             )
         if response.status_code != 200:
-            print(f"Set input_boolean {switch} to {state}={response.content}")
+            log.warning(f"Set input_boolean {switch} to {state}={response.content}")
         return response
 
     def set_notify_vehicle(self, state):
@@ -105,7 +108,7 @@ class HomeAssistant(object):
         return self.get_state("input_boolean.person_detector")
 
     def echo_speaks(self, message):
-        print("Speaking {}".format(message))
+        log.info("Speaking {}".format(message))
         json = {"message": message, "data": {"type": "tts"}}
         r = requests.post(
             f"{self.api}services/notify/alexa_media_kitchen_ecobee4",
@@ -123,7 +126,7 @@ class HomeAssistant(object):
             return "away"
 
     def suppress_notify_person(self):
-        print("Keep person notify suppressed")
+        log.debug("Keep person notify suppressed")
         r = requests.post(
             f"{self.api}services/script/turn_on",
             json={"entity_id": "script.pause_person_detector"},
@@ -137,7 +140,7 @@ class HomeAssistant(object):
             json={"entity_id": "script.all_exterior_lights_on_bright"},
             headers=self.headers,
         )
-        print(f"Turned on outside lights {r}")
+        log.info(f"Turned on outside lights {r}")
 
     def house_cleaners_arrived(self):
         if (
@@ -150,7 +153,7 @@ class HomeAssistant(object):
                 json={"entity_id": "script.house_cleaners_arrive"},
                 headers=self.headers,
             )
-            print(f"Run script house cleaners arrive={r}")
+            log.info(f"Run script house cleaners arrive={r}")
             self.last_house_cleaners_arrived = datetime.datetime.now()
         else:
-            print(f"House cleaners last arrrived {self.last_house_cleaners_arrived}")
+            log.info(f"House cleaners last arrrived {self.last_house_cleaners_arrived}")

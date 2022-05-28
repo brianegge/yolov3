@@ -1,4 +1,6 @@
+import hashlib
 import json
+import logging
 import os
 import sys
 import time
@@ -6,19 +8,20 @@ import traceback
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
 from pathlib import Path
-from pprint import pprint
 from timeit import default_timer as timer
 from urllib.parse import urlparse
 
 import cv2
 import numpy as np
 import requests
-from object_detection import ObjectDetection
 from PIL import Image, UnidentifiedImageError
 from requests.auth import HTTPDigestAuth
 
 from notify import notify
-from utils import bb_intersection_over_union, draw_bbox, draw_road, cleanup
+from object_detection import ObjectDetection
+from utils import bb_intersection_over_union, cleanup, draw_bbox, draw_road
+
+logger = logging.getLogger(__name__)
 
 
 class Camera:
@@ -31,9 +34,10 @@ class Camera:
         self.is_file = False
         self.vehicle_check = config.getboolean("vehicle_check", False)
         self.excludes = excludes
-        self.capture_async = self.config.getboolean("async", False)
+        self.capture_async = config.getboolean("async", False)
         self.error = None
         self.image = None
+        self.image_hash = 0
         self.source = None
         self.prior_image = None
         self.prior_time = datetime.fromtimestamp(0)
@@ -42,33 +46,47 @@ class Camera:
         self.fails = 0
         self.skip = 0
         self.ftp_path = config.get("ftp-path", None)
+        self.interval = config.getint("interval", 60)
         self.globber = None
         self.session = None
 
     def poll(self):
-        # print('polling {}'.format(self.name))
+        # logger.debug('polling {}'.format(self.name))
         if self.ftp_path:
-            if self.globber is None:
-                globber = Path(self.ftp_path).glob("**/*.jpg")
-            try:
-                f = next(globber)
-            except OSError as e:
-                print(f"Error scanning {self.ftp_path}: {e}\n{e.args}")
-                self.globber = None
-                return None
-            except StopIteration:
-                self.globber = None
-                cleanup(self.ftp_path)
-                return None
-            img = cv2.imread(str(f))
-            os.remove(f)
-            if img is not None and len(img) > 0:
-                self.image = img
-                self.source = f
-                self.resize()
-                return self
-            else:
-                self.error = "bad file"
+            img = None
+            while img == None:
+                if self.globber is None:
+                    globber = Path(self.ftp_path).glob("**/*.jpg")
+                try:
+                    f = next(globber)
+                except OSError as e:
+                    logger.error(f"Error scanning {self.ftp_path}: {e}\n{e.args}")
+                    self.globber = None
+                    return None
+                except StopIteration:
+                    self.globber = None
+                    cleanup(self.ftp_path)
+                    return None
+                if datetime.fromtimestamp(
+                    os.path.getmtime(f)
+                ) < datetime.now() - timedelta(minutes=10):
+                    logger.warning(f"Skipping old file {f}")
+                    os.remove(f)
+                    continue
+                img = cv2.imread(str(f))
+                os.remove(f)
+                if img is not None and len(img) > 0:
+                    h = hashlib.md5(img.view(np.uint8)).hexdigest()
+                    if self.image_hash == h:
+                        self.error = "dup"
+                        return None
+                    self.image = img
+                    self.image_hash = h
+                    self.source = f
+                    self.resize()
+                    return self
+                else:
+                    self.error = "bad file"
         return None
 
     def capture(self):
@@ -101,18 +119,21 @@ class Camera:
                         self.error = "empty"
                         return self
                     self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
+                    self.image_hash = hashlib.md5(self.image.view(np.uint8)).hexdigest()
                     self.source = self.config["uri"]
                     self.resize()
                     self.error = None
                     self.fails = 0
-            except:
+            except Exception as e:
                 self.image = None
+                self.image_hash = 0
                 self.source = None
                 self.resized = None
                 self.skip = 2 ** self.fails
                 self.fails += 1
                 self.session = None
                 self.error = sys.exc_info()[0]
+                logger.exception(f"Error with {self.name}:{self.error}")
                 if self.skip > 12:
                     self.reboot()
         return self
@@ -124,14 +145,14 @@ class Camera:
             ._replace(path="/cgi-bin/magicBox.cgi", query="action=reboot")
             .geturl()
         )
-        print(f"Rebooting {self.name}: {url}")
+        logger.info(f"Rebooting {self.name}: {url}")
         try:
             r = requests.get(
                 url, auth=HTTPDigestAuth(self.config["user"], self.config["password"])
             )
             r.raise_for_status()
         except:
-            print(sys.exc_info()[0])
+            logger.exception("Failed to reboot %s", self.name)
 
     def resize(self):
         hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
@@ -157,9 +178,8 @@ def add_centers(predictions):
         center["y"] = bbox["top"] + bbox["height"] / 2.0
 
 
-def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_client):
+def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client):
     threshold = config["detector"].getfloat("threshold")
-    smartthings = config["smartthings"]
     image = cam.image
     if image is None:
         return 0, "{}=[{}]".format(cam.name, cam.error)
@@ -207,7 +227,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
                 p["ignore"] = "road"
     elif cam.name == "garage-l":
         for p in predictions:
-            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.21 and (
+            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.22 and (
                 p["tagName"] in ["vehicle", "person"]
             ):
                 p["ignore"] = "neighbor"
@@ -244,7 +264,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
 
     os.makedirs(save_dir, exist_ok=True)
     if len(departed_objects) > 0 and cam.prior_priority > -3:
-        print(
+        logger.info(
             "\n{} current={}, prior={}, departed={}".format(
                 cam.name,
                 ",".join(valid_objects),
@@ -267,58 +287,56 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
             cv2.imwrite(basename + ".jpg", image)
         cam.objects = valid_objects
     # Always open garage door, we can call this many times
-    if smartthings:
-        if (
-            "cat" in valid_objects
-            and cam.name in ["shed", "garage-l", "garage-r"]
-            and "crack_garage" in smartthings
-        ):
-            print("Letting cat in")
-            r = requests.get(smartthings["crack_garage"])
-            if r.json()["result"] != "OK":
-                print("Failed to crack open garage door for cat")
-                print(r.text)
-        elif "cat" in valid_objects and cam.name in ["garage"]:
-            print("Letting cat out")
-            st.crack_garage_door()
+    #    if (
+    #        "cat" in valid_objects
+    #        and cam.name in ["shed", "garage-l", "garage-r"]
+    #        and "crack_garage" in smartthings
+    #    ):
+    #        logger.info("Letting cat in")
+    #        r = requests.get(smartthings["crack_garage"])
+    #        if r.json()["result"] != "OK":
+    #            logger.info("Failed to crack open garage door for cat")
+    #            logger.info(r.text)
+    #    elif "cat" in valid_objects and cam.name in ["garage"]:
+    #        logger.info("Letting cat out")
+    #        ha.crack_garage_door()
 
-    if "vehicle" in valid_objects or "vehicle" in departed_objects:
-        count = len(
-            list(
-                filter(
-                    lambda p: p["tagName"] == "vehicle" and not "ignore" in p,
-                    valid_predictions,
-                )
-            )
-        )
-        mqtt_client.publish("{}/vehicle/count".format(cam.name), count, retain=True)
     colors = config["colors"]
-    uniq_predictions = []
+    new_predictions = []
     for p in valid_predictions:
+        this_box = p["boundingBox"]
+        this_name = p["tagName"]
         prev_class = cam.prev_predictions.setdefault(p["tagName"], [])
-        prev_time = cam.prev_predictions.get(
-            p["tagName"] + "-time", datetime.utcfromtimestamp(0)
-        )
-        if (
-            datetime.now() - prev_time > timedelta(minutes=60) and len(prev_class) > 0
-        ):  # clear if we haven't seen this class in 15 minutes on this camera
-            prev_class.clear()
-            print(
-                "Cleared previous predictions for %s on %s" % (p["tagName"], cam.name)
-            )
-        cam.prev_predictions[p["tagName"] + "-time"] = datetime.now()
-        skip = False
-        for prev_box in prev_class:
-            iou = bb_intersection_over_union(prev_box, p["boundingBox"])
+        for prev in prev_class:
+            prev_box = prev["boundingBox"]
+            iou = bb_intersection_over_union(prev_box, this_box)
+            logger.debug(f"iou {cam.name}:{this_name} = prev_box & this_box = {iou}")
             if iou > 0.5:
-                # p["ignore"] = "prev-iou={:.2f}".format(iou)
                 p["iou"] = iou
-                skip = True
-                priority = cam.prior_priority
-                break
-        if not skip:
-            prev_class.append(p["boundingBox"])
-            uniq_predictions.append(p)
+                prev["boundingBox"] = this_box  # move the box to current
+                prev["last_time"] = datetime.now()
+                prev["age"] = prev["age"] + 1
+                p["age"] = prev["age"]
+        expired = [
+            x
+            for x in prev_class
+            if x["last_time"] < datetime.now() - timedelta(minutes=2) and x["age"] > 10
+        ]
+        for e in expired:
+            logger.info(
+                f"{e['tagName']} expired from {cam.name} after being seen {e['age']} times"
+            )
+        prev_class[:] = [
+            x
+            for x in prev_class
+            if x["last_time"] > datetime.now() - timedelta(minutes=2)
+        ]
+        if not "iou" in p:
+            p["start_time"] = datetime.now()
+            p["last_time"] = datetime.now()
+            p["age"] = 0
+            prev_class.append(p)
+            new_predictions.append(p)
 
     if len(valid_predictions) >= 0:
         if isinstance(image, Image.Image):
@@ -335,15 +353,28 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
         if cam.name in ["peach tree", "driveway"]:
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
         elif cam.name in ["garage-l"]:
-            draw_road(im_pil, [(0, 0.21), (1.0, 0.21)])
+            draw_road(im_pil, [(0, 0.22), (1.0, 0.22)])
 
-    uniq_objects = set(p["tagName"] for p in uniq_predictions)
+    new_objects = set(p["tagName"] for p in new_predictions)
 
     # Only notify deer if not seen
-    if "deer" in uniq_objects:
+    if "deer" in new_objects:
         ha.deer_alert(cam.name)
+    # mosquitto_pub -h mqtt.home -t "homeassistant/sensor/deck-dog/config" -r -m '{"name": "deck dog count", "state_topic": "deck/dog/count", "state_class": "measurement", "uniq_id": "deck-dog", "availability_topic": "aicam/status"}'
+    for o in ["vehicle", "dog"]:
+        if o in new_objects or o in departed_objects:
+            count = len(
+                list(
+                    filter(
+                        lambda p: p["tagName"] == o,
+                        valid_predictions,
+                    )
+                )
+            )
+            logging.info(f"Publishing count {cam.name}/{o}/count={count}")
+            mqtt_client.publish(f"{cam.name}/{o}/count", count, retain=False)
 
-    if len(uniq_objects):
+    if len(new_objects):
         if cam.name in ["driveway", "garage"]:
             message = "%s in %s" % (",".join(valid_objects), cam.name)
         elif cam.name == "shed":
@@ -355,12 +386,15 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
         else:
             message = "%s near %s" % (",".join(valid_objects), cam.name)
         if cam.age > 2:
-            priority = notify(cam, message, im_pil, valid_predictions, config, st, ha)
+            priority = notify(cam, message, im_pil, valid_predictions, config, ha)
         else:
-            print("Skipping notifications until after warm up")
-            priority = 0
+            logger.info("Skipping notifications until after warm up")
+            priority = -4
+    elif len(valid_predictions) > 0:
+        priority = cam.prior_priority
     else:
         priority = -4
+
     # Notify may also mark objects as ignore
     valid_predictions = list(filter(lambda p: not ("ignore" in p), predictions))
     cam.objects = set(p["tagName"] for p in valid_predictions)
@@ -368,20 +402,25 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
     if priority > -3 and not cam.is_file:
         # don't save file if we're reading from a file
         if cam.prior_image is not None:
-            basename = os.path.join(
-                save_dir,
-                cam.prior_time.strftime("%H%M%S")
-                + "-"
-                + cam.name.replace(" ", "_")
-                + "-"
-                + "_".join(valid_objects)
-                + "-prior",
+            priorname = (
+                os.path.join(
+                    save_dir,
+                    cam.prior_time.strftime("%H%M%S")
+                    + "-"
+                    + cam.name.replace(" ", "_")
+                    + "-"
+                    + "_".join(valid_objects)
+                    + "-prior",
+                )
+                + ".jpg"
             )
             if isinstance(cam.prior_image, Image.Image):
-                cam.prior_image.save(basename + ".jpg")
+                cam.prior_image.save(priorname)
             else:
-                cv2.imwrite(basename + ".jpg", cam.prior_image)
+                cv2.imwrite(priorname, cam.prior_image)
             cam.prior_image = None
+            utime = time.mktime(cam.prior_time.timetuple())
+            os.utime(priorname, (utime, utime))
         basename = os.path.join(
             save_dir,
             datetime.now().strftime("%H%M%S")
@@ -395,28 +434,31 @@ def detect(cam, color_model, grey_model, vehicle_model, config, st, ha, mqtt_cli
         else:
             cv2.imwrite(basename + ".jpg", image)
         with open(basename + ".txt", "w") as file:
-            j = {'source':str(cam.source),'time':str(datetime.now()), 'predictions':predictions}
-            file.write(json.dumps(j, indent=4))
+            j = {
+                "source": str(cam.source),
+                "time": str(datetime.now()),
+                "predictions": predictions,
+            }
+            file.write(json.dumps(j, indent=4, default=str))
         im_pil.save(basename + "-annotated.jpg")
     else:
         cam.prior_image = image
-        cam.prior_time = datetime.now()
+    cam.prior_time = datetime.now()
     cam.prior_priority = priority
 
     def format_prediction(p):
+        o = "{}:{:.2f}".format(p["tagName"], p["probability"])
         if "iou" in p:
-            return "{}:{:.2f}:iou={:.2f}".format(
-                p["tagName"], p["probability"], p["iou"]
-            )
-        elif "ignore" in p:
-            return "{}:{:.2f}:{}".format(p["tagName"], p["probability"], p["ignore"])
-        else:
-            return "{}:{:.2f}:p{}-{}".format(
-                p["tagName"],
-                p["probability"],
-                p.get("priority", "?"),
-                p.get("priority_type", "?"),
-            )
+            o += ":iou={:.2f}".format(p["iou"])
+        if "ignore" in p:
+            o += ":ignore={}".format(p["ignore"])
+        if "priority" in p:
+            o += ":p={}".format(p["priority"])
+        if "priority_type" in p:
+            o += ":pt={}".format(p["priority_type"])
+        if "age" in p:
+            o += ":age={}".format(p["age"])
+        return o
 
     return (
         prediction_time,

@@ -1,7 +1,7 @@
 numpy==1.16.6
 matplotlib==2.1.1
 aiohttp
-pysmartthings
+#pysmartthings
 opencv-python
 colorhash
 filterpy

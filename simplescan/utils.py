@@ -1,9 +1,11 @@
+import logging
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from pprint import pprint
 
 from PIL import ImageColor, ImageDraw, ImageFont
+
+log = logging.getLogger(__name__)
 
 
 def draw_bbox(image, p, color, label=None, width=4):
@@ -74,7 +76,7 @@ def bb_intersection_over_union(boxA, boxB):
 def cleanup(directory_name, children_only=True):
     directory = Path(directory_name)
     if not directory.exists():
-        print(f'"{directory_name}" does not exist')
+        log.warning(f'"{directory_name}" does not exist')
         return
     try:
         for item in directory.iterdir():
@@ -82,7 +84,7 @@ def cleanup(directory_name, children_only=True):
             if item.is_dir():
                 cleanup(item, children_only=False)
             elif ext in [".jpg"]:
-                print("Not removing image {}".format(item))
+                log.debug("Not removing image {}".format(item))
             else:
                 item.unlink()
         if next(directory.iterdir(), None) is None and children_only == False:

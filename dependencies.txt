@@ -11,3 +11,5 @@ onnxruntime
 pycuda
 logger
 configparser
+# libsystemd-dev
+systemd-python

@@ -6,14 +6,14 @@ import sys
 import traceback
 from datetime import date, datetime
 from io import BytesIO
-from pprint import pprint
+from pprint import pformat
 
 import aiohttp
 import requests
 
 import sighthound
 
-# logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 with open("license-plates.json") as f:
     license_plates = json.load(f)
@@ -35,7 +35,7 @@ def edits2(word):
     return (e2 for e1 in edits1(word) for e2 in edits1(e1))
 
 
-def notify(cam, message, image, predictions, config, st, ha):
+def notify(cam, message, image, predictions, config, ha):
     mode = ha.mode()
     mode_key = "priority-%s" % mode
     if mode_key in config:
@@ -50,27 +50,24 @@ def notify(cam, message, image, predictions, config, st, ha):
         filter(lambda p: p["tagName"] == "vehicle" and not "ignore" in p, predictions)
     )
     has_vehicles = len(vehicles) > 0
-    has_person = (
-        len(
-            list(
-                filter(
-                    lambda p: p["tagName"] == "person" and not "ignore" in p,
-                    predictions,
-                )
-            )
+    people = list(
+        filter(
+            lambda p: p["tagName"] == "person" and not "ignore" in p,
+            predictions,
         )
-        > 0
     )
+    has_person = len(people) > 0
     has_dog = len(list(filter(lambda p: p["tagName"] == "dog", predictions))) > 0
     packages = list(filter(lambda p: p["tagName"] == "package", predictions))
     has_package = len(packages) > 0
     if has_vehicles:
         notify_vehicle = ha.should_notify_vehicle()
-        print(f"ha.should_notify_vehicle={notify_vehicle}")
+        logging.info(f"ha.should_notify_vehicle={notify_vehicle}")
     else:
         notify_vehicle = False
     if has_person and not cam.name == "peach tree":
         notify_person = ha.should_notify_person()
+        logging.info(f"see {len(people)} people, notify_person={notify_person}")
     else:
         notify_person = False
     if notify_person:
@@ -80,17 +77,17 @@ def notify(cam, message, image, predictions, config, st, ha):
             cam.name in ["deck", "play"] and (door_left or door_left) and mode == "home"
         )
         if do_ignore:
-            print(
+            logging.info(
                 f"Ignoring person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
             )
             notify_person = False
             ha.suppress_notify_person()
         else:
-            print(
+            logging.info(
                 f"Notifying person because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
             )
     sound = "pushover"
-    for p in list(filter(lambda p: "ignore" in p, predictions)):
+    for p in list(filter(lambda p: "ignore" in p or "iou" in p, predictions)):
         p["priority"] = -4
     for p in list(filter(lambda p: not "priority" in p, predictions)):
         tagName = p["tagName"]
@@ -107,7 +104,7 @@ def notify(cam, message, image, predictions, config, st, ha):
             i = -3
             i_type = "person in garage rule"
         elif tagName == "person" and not notify_person:
-            i = -2
+            i = -4
             # we are still outside, keep detection off
             ha.suppress_notify_person()
             i_type = "person detection off"
@@ -159,7 +156,7 @@ def notify(cam, message, image, predictions, config, st, ha):
     if priority is None:
         priority = 0
         priority_rule = "default"
-        print("Using default priority")
+        logging.info("Using default priority")
 
     # crop to area of interest
     width, height = image.size
@@ -193,16 +190,16 @@ def notify(cam, message, image, predictions, config, st, ha):
     top = min(top, center_y - show_height / 2)
     top = max(0, top)
     crop_rectangle = (left, top, left + show_width, top + show_height)
-    # print("Cropping to %d,%d,%d,%d" % crop_rectangle)
+    # logging.info("Cropping to %d,%d,%d,%d" % crop_rectangle)
     cropped_image = image.crop(crop_rectangle)
 
     if priority <= -3:
-        # print('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
+        # logging.info('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
         return priority
     # else:
-    #    print('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
+    #    logging.info('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
     if has_vehicles:
-        pprint(vehicles)
+        logging.info(pformat(vehicles))
         ha.turn_on_outside_lights()
         left = max(0, min(p["boundingBox"]["left"] - 0.05 for p in vehicles) * width)
         right = min(
@@ -266,13 +263,13 @@ def notify(cam, message, image, predictions, config, st, ha):
                         owner = license_plates[guess].get("owner")
                         make = license_plates[guess].get("make")
                         if license_plates[guess].get("announce", True) == False:
-                            print(
+                            logging.info(
                                 "Ignoring {}'s vehicle with plate {}".format(
                                     owner, plate
                                 )
                             )
                             return -3
-                        if owner.lower() == "house cleaner":
+                        if owner and owner.lower() == "house cleaner":
                             ha.house_cleaners_arrived()
                         break
                 if owner is None and plate["confidence"] > 0.05:
@@ -296,12 +293,13 @@ def notify(cam, message, image, predictions, config, st, ha):
                 if "vehicle" in message:
                     message = re.sub("vehicle", vehicle_message, message)
         except:
-            traceback.print_exc(file=sys.stdout)
-            print("Failed to enrich via sighthound")
+            logging.exception("Failed to enrich via sighthound")
 
     if has_package and (priority >= 0 or has_dog):
         prob = max(map(lambda x: x["probability"], packages))
-        print(f"has_package={has_package}, has_dog={has_dog}, prob={prob}, mode={mode}")
+        logging.info(
+            f"has_package={has_package}, has_dog={has_dog}, prob={prob}, mode={mode}"
+        )
         if has_package and has_dog:
             ha.echo_speaks(
                 "Rufus is opening package near {}".format(packages[0]["camName"])
@@ -318,7 +316,7 @@ def notify(cam, message, image, predictions, config, st, ha):
                     )
                 )
         else:
-            print(
+            logging.info(
                 "Not speaking package delivery because probability {} < 0.9".format(
                     prob
                 )
@@ -344,8 +342,8 @@ def notify(cam, message, image, predictions, config, st, ha):
             files={"attachment": ("image.jpg", output_bytes, "image/jpeg")},
         )
         if r.status_code != 200:
-            pprint(r)
-            pprint(r.headers)
+            logging.warning(pformat(r))
+            logging.warning(pformat(r.headers))
     except Exception:
         logger.exception("Failed to call Pushover")
 

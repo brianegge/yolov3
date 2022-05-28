@@ -1,8 +1,9 @@
+import logging
 import math
 import os
 import tempfile
 import time
-from pprint import pprint
+from timeit import default_timer as timer
 
 import cv2
 import numpy as np
@@ -11,12 +12,13 @@ import onnxruntime
 import pycuda.autoinit
 import pycuda.driver as cuda
 import tensorrt as trt
-from object_detection import ObjectDetection
 from PIL import Image
 
 import common
+from object_detection import ObjectDetection
 
 TRT_LOGGER = trt.Logger()
+logger = logging.getLogger(__name__)
 
 
 class ONNXTensorRTv4ObjectDetection(ObjectDetection):
@@ -39,7 +41,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             engine_file_path
         ) > os.path.getctime(model_filename):
             # If a serialized engine exists, use it instead of building an engine.
-            print(
+            logger.info(
                 "Reading engine from file {} for classes {}".format(
                     engine_file_path, ",".join(labels)
                 )
@@ -47,7 +49,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
                 self.engine = runtime.deserialize_cuda_engine(f.read())
         else:
-            print("Compiling model {}".format(os.path.basename(model_filename)))
+            logger.info("Compiling model {}".format(os.path.basename(model_filename)))
             self.engine = self.get_engine(model_filename, engine_file_path)
         self.is_fp16 = False  # network.get_input(0).type == 'tensor(float16)'
         self.input_name = "input"  # network.get_input(0).name
@@ -56,32 +58,36 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             0, (1, self.channels, self.model_height, self.model_width)
         )
 
+    def __del__(self):
+        self.cfx.pop()
+        del self.cfx
+
     def get_engine(self, onnx_file_path, engine_file_path):
         """Takes an ONNX file and creates a TensorRT engine to run inference with"""
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network(
             common.EXPLICIT_BATCH
         ) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
-            #builder.max_workspace_size = 1 << 28  # 256MiB
+            # builder.max_workspace_size = 1 << 28  # 256MiB
             config = builder.create_builder_config()
             config.max_workspace_size = 1 << 20
             builder.max_batch_size = 1
             # Parse model file
             if not os.path.exists(onnx_file_path):
-                print(
+                logger.warning(
                     "ONNX file {} not found, please run yolov3_to_onnx.py first to generate it.".format(
                         onnx_file_path
                     )
                 )
                 exit(0)
-            print("Loading ONNX file from path {}...".format(onnx_file_path))
+            logger.info("Loading ONNX file from path {}...".format(onnx_file_path))
             with open(onnx_file_path, "rb") as model:
-                print("Beginning ONNX file parsing")
+                logger.info("Beginning ONNX file parsing")
                 if not parser.parse(model.read()):
-                    print("ERROR: Failed to parse the ONNX file.")
+                    logger.error("ERROR: Failed to parse the ONNX file.")
                     for error in range(parser.num_errors):
-                        print(parser.get_error(error))
+                        logger.error(parser.get_error(error))
                     return None
-            print(
+            logger.info(
                 "Creating model with shape {},{},{}".format(
                     self.channels, self.model_height, self.model_width
                 )
@@ -92,8 +98,8 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                 self.model_height,
                 self.model_width,
             ]  # NCWH
-            print("Completed parsing of ONNX file")
-            print(
+            logger.info("Completed parsing of ONNX file")
+            logger.info(
                 "Building an engine from file {}; this may take a while...".format(
                     onnx_file_path
                 )
@@ -101,9 +107,9 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             plan = builder.build_serialized_network(network, config)
             with trt.Runtime(TRT_LOGGER) as runtime:
                 engine = runtime.deserialize_cuda_engine(plan)
-            #engine = builder.build_cuda_engine(network)
+            # engine = builder.build_cuda_engine(network)
             if engine:
-                print("Completed creating Engine")
+                logger.info("Completed creating Engine")
                 with open(engine_file_path, "wb") as f:
                     f.write(engine.serialize())
             return engine
@@ -114,7 +120,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         # img_in = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         if isinstance(image, Image.Image):
             if image.size != (self.model_width, self.model_height):
-                print(
+                logger.debug(
                     "Resizing from {} to {}".format(
                         pil_image.size, (self.model_width, self.model_height)
                     )
@@ -135,7 +141,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         img_in = np.expand_dims(img_in, axis=0)
         img_in /= 255.0
         img_in = np.ascontiguousarray(img_in)
-        # print("Shape of the network input: ", img_in.shape)
+        # logger.debug("Shape of the network input: ", img_in.shape)
         return img_in
 
     def predict(self, preprocessed_image):
@@ -164,7 +170,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             )
         finally:
             self.cfx.pop()  # very important
-        # print('Len of outputs: ', len(trt_outputs))
+        # logger.debug('Len of outputs: ', len(trt_outputs))
         num_classes = len(self.labels)
         trt_outputs[0] = trt_outputs[0].reshape(1, -1, 1, 4)
         trt_outputs[1] = trt_outputs[1].reshape(1, -1, num_classes)
@@ -281,8 +287,11 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
 def do_inference(context, bindings, inputs, outputs, stream):
     # Transfer input data to the GPU.
     [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
+    # prediction_start = timer()
     # Run inference.
     context.execute_async(bindings=bindings, stream_handle=stream.handle)
+    # prediction_time = timer() - prediction_start
+    # logger.info("Inference in {: 0.3f}", prediction_time)
     # Transfer predictions back from the GPU.
     [cuda.memcpy_dtoh_async(out.host, out.device, stream) for out in outputs]
     # Synchronize the stream
@@ -292,7 +301,7 @@ def do_inference(context, bindings, inputs, outputs, stream):
 
 
 def nms_cpu(boxes, confs, nms_thresh=0.5, min_mode=False):
-    # print(boxes.shape)
+    # logger.debug(boxes.shape)
     x1 = boxes[:, 0]
     y1 = boxes[:, 1]
     x2 = boxes[:, 2]

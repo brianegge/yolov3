@@ -15,10 +15,12 @@ def test_should_notify_vehicle():
     ha.set_notify_vehicle(True)
     assert ha.should_notify_vehicle() == True
 
+
 def test_should_notify_person():
     assert type(ha.should_notify_person()) == bool
     ha.suppress_notify_person()
     assert ha.should_notify_person() == False
+
 
 def test_door_contacts():
     door_left = ha.get_door_left()

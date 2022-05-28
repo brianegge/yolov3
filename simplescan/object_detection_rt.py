@@ -9,9 +9,9 @@ import onnxruntime
 import pycuda.autoinit
 import pycuda.driver as cuda
 import tensorrt as trt
-from object_detection import ObjectDetection
 
 import common
+from object_detection import ObjectDetection
 
 TRT_LOGGER = trt.Logger()
 

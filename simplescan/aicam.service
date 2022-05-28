@@ -9,7 +9,7 @@ Restart=always
 RestartSec=60
 User=egge
 WorkingDirectory=/home/egge/detector/simplescan
-ExecStart=/home/egge/detector/bin/python3 /home/egge/detector/simplescan/main.py --trt
+ExecStart=/home/egge/detector/bin/python3 -u /home/egge/detector/simplescan/main.py --trt
 Environment=PYTHONUNBUFFERED=true
 Environment=OPENBLAS_CORETYPE=ARMV8
 Environment=PYTHONPATH=/usr/lib/python3.6/dist-packages
@@ -19,6 +19,8 @@ Type=notify
 Restart=always
 TimeoutStartSec=10min
 WatchdogSec=5min
+#StandardOutput=append:/var/log/aicam-console.log
+#StandardError=append:/var/log/aicam-console.log
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=aicam

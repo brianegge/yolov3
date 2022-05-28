@@ -10,6 +10,7 @@ labels=/home/egge/gdrive/dev/packages/obj.names
 onnx=/home/egge/detector/simplescan/vehicles_yolov4.onnx
 
 # https://github.com/Tianxiaomo/pytorch-YOLOv4
+source /home/egge/detector/bin/activate
 PYTHONPATH=/home/egge/github/pytorch-YOLOv4
 #768_1344
 if [ $weights -nt $onnx ]
