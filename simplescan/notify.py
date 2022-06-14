@@ -65,7 +65,7 @@ def notify(cam, message, image, predictions, config, ha):
         logging.info(f"ha.should_notify_vehicle={notify_vehicle}")
     else:
         notify_vehicle = False
-    if has_person and not cam.name == "peach tree":
+    if has_person:
         notify_person = ha.should_notify_person()
         logging.info(f"see {len(people)} people, notify_person={notify_person}")
     else:
@@ -103,7 +103,7 @@ def notify(cam, message, image, predictions, config, ha):
         elif tagName == "person" and cam.name == "garage":
             i = -3
             i_type = "person in garage rule"
-        elif tagName == "person" and not notify_person:
+        elif tagName == "person" and has_person and not notify_person:
             i = -4
             # we are still outside, keep detection off
             ha.suppress_notify_person()

@@ -287,19 +287,12 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
             cv2.imwrite(basename + ".jpg", image)
         cam.objects = valid_objects
     # Always open garage door, we can call this many times
-    #    if (
-    #        "cat" in valid_objects
-    #        and cam.name in ["shed", "garage-l", "garage-r"]
-    #        and "crack_garage" in smartthings
-    #    ):
-    #        logger.info("Letting cat in")
-    #        r = requests.get(smartthings["crack_garage"])
-    #        if r.json()["result"] != "OK":
-    #            logger.info("Failed to crack open garage door for cat")
-    #            logger.info(r.text)
-    #    elif "cat" in valid_objects and cam.name in ["garage"]:
-    #        logger.info("Letting cat out")
-    #        ha.crack_garage_door()
+    if "cat" in valid_objects and cam.name in ["shed", "garage-l", "garage-r"]:
+        logger.info("Letting cat in")
+        ha.crack_garage_door()
+    elif "cat" in valid_objects and cam.name in ["garage"]:
+        logger.info("Letting cat out")
+        ha.let_cat_out()
 
     colors = config["colors"]
     new_predictions = []
