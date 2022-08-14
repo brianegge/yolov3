@@ -50,6 +50,17 @@ def notify(cam, message, image, predictions, config, ha):
         filter(lambda p: p["tagName"] == "vehicle" and not "ignore" in p, predictions)
     )
     has_vehicles = len(vehicles) > 0
+    has_visible_vehicles = len(
+        list(
+            filter(
+                lambda p: p["tagName"] == "vehicle"
+                and not "ignore" in p
+                and not "departed" in p
+                and p["age"] == 0,
+                predictions,
+            )
+        )
+    )
     people = list(
         filter(
             lambda p: p["tagName"] == "person" and not "ignore" in p,
@@ -58,7 +69,9 @@ def notify(cam, message, image, predictions, config, ha):
     )
     has_person = len(people) > 0
     has_dog = len(list(filter(lambda p: p["tagName"] == "dog", predictions))) > 0
-    packages = list(filter(lambda p: p["tagName"] == "package", predictions))
+    packages = list(
+        filter(lambda p: p["tagName"] == "package" and not "departed" in p, predictions)
+    )
     has_package = len(packages) > 0
     if has_vehicles:
         notify_vehicle = ha.should_notify_vehicle()
@@ -154,6 +167,12 @@ def notify(cam, message, image, predictions, config, ha):
         priority = 1
         priority_rule = "dog near package"
     if priority is None:
+        for p in predictions:
+            if "priority" in p:
+                priority = p["priority"]
+                prior_rule = "prior_priority"
+                logging.info(f"Using prior priority={priority}")
+    if priority is None:
         priority = 0
         priority_rule = "default"
         logging.info("Using default priority")
@@ -198,7 +217,7 @@ def notify(cam, message, image, predictions, config, ha):
         return priority
     # else:
     #    logging.info('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
-    if has_vehicles:
+    if has_visible_vehicles:
         logging.info(pformat(vehicles))
         ha.turn_on_outside_lights()
         left = max(0, min(p["boundingBox"]["left"] - 0.05 for p in vehicles) * width)
@@ -300,11 +319,11 @@ def notify(cam, message, image, predictions, config, ha):
         logging.info(
             f"has_package={has_package}, has_dog={has_dog}, prob={prob}, mode={mode}"
         )
-        if has_package and has_dog:
-            ha.echo_speaks(
-                "Rufus is opening package near {}".format(packages[0]["camName"])
-            )
-        elif prob > 0.9:
+        # if has_package and has_dog:
+        #    ha.echo_speaks(
+        #        "Rufus is opening package near {}".format(packages[0]["camName"])
+        #    )
+        if prob > 0.9:
             if len(packages) == 1:
                 ha.echo_speaks(
                     "Package delivered near {}".format(packages[0]["camName"])

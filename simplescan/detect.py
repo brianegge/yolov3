@@ -8,10 +8,12 @@ import traceback
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
 from pathlib import Path
+from pprint import pformat
 from timeit import default_timer as timer
 from urllib.parse import urlparse
 
 import cv2
+import humanize
 import numpy as np
 import requests
 from PIL import Image, UnidentifiedImageError
@@ -32,6 +34,7 @@ class Camera:
         self.objects = set()
         self.prev_predictions = {}
         self.is_file = False
+        self.counts = {}
         self.vehicle_check = config.getboolean("vehicle_check", False)
         self.excludes = excludes
         self.capture_async = config.getboolean("async", False)
@@ -265,7 +268,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
     os.makedirs(save_dir, exist_ok=True)
     if len(departed_objects) > 0 and cam.prior_priority > -3:
         logger.info(
-            "\n{} current={}, prior={}, departed={}".format(
+            "{} current={}, prior={}, departed={}".format(
                 cam.name,
                 ",".join(valid_objects),
                 ",".join(cam.objects),
@@ -309,27 +312,23 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
                 prev["boundingBox"] = this_box  # move the box to current
                 prev["last_time"] = datetime.now()
                 prev["age"] = prev["age"] + 1
-                p["age"] = prev["age"]
-        expired = [
-            x
-            for x in prev_class
-            if x["last_time"] < datetime.now() - timedelta(minutes=2) and x["age"] > 10
-        ]
-        for e in expired:
-            logger.info(
-                f"{e['tagName']} expired from {cam.name} after being seen {e['age']} times"
-            )
-        prev_class[:] = [
-            x
-            for x in prev_class
-            if x["last_time"] > datetime.now() - timedelta(minutes=2)
-        ]
+                for t in ["age", "ignore", "priority", "priority_type"]:
+                    if t in prev:
+                        p[t] = prev[t]
         if not "iou" in p:
             p["start_time"] = datetime.now()
             p["last_time"] = datetime.now()
             p["age"] = 0
             prev_class.append(p)
             new_predictions.append(p)
+    expired = []
+    for prev_tag, prev_class in cam.prev_predictions.items():
+        expired += [
+            x
+            for x in prev_class
+            if x["last_time"] < datetime.now() - timedelta(minutes=1)
+        ]
+        prev_class[:] = [x for x in prev_class if x not in expired]
 
     if len(valid_predictions) >= 0:
         if isinstance(image, Image.Image):
@@ -347,6 +346,32 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
         elif cam.name in ["garage-l"]:
             draw_road(im_pil, [(0, 0.22), (1.0, 0.22)])
+    notify_expired = []
+    for e in expired:
+        draw_bbox(im_pil, e, "grey", width=4)
+        t = (
+            humanize.naturaltime(datetime.now() - e["start_time"])
+            .replace(" ago", "")
+            .replace("a minute", "minute")
+        )
+        e[
+            "msg"
+        ] = f"{e['tagName']} departed from {cam.name} after being seen {e['age']} times over the past {t}"
+        e["departed"] = True
+        logger.info(e["msg"])
+        if datetime.now() - e["start_time"] > timedelta(minutes=2) and e["age"] > 4:
+            notify_expired.append(e)
+    if len(notify_expired):
+        logger.debug(pformat(notify_expired))
+        msg = ", ".join([x["msg"] for x in notify_expired])
+        notify(
+            cam,
+            msg,
+            im_pil,
+            notify_expired,
+            config,
+            ha,
+        )
 
     new_objects = set(p["tagName"] for p in new_predictions)
 
@@ -354,18 +379,19 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
     if "deer" in new_objects:
         ha.deer_alert(cam.name)
     # mosquitto_pub -h mqtt.home -t "homeassistant/sensor/deck-dog/config" -r -m '{"name": "deck dog count", "state_topic": "deck/dog/count", "state_class": "measurement", "uniq_id": "deck-dog", "availability_topic": "aicam/status"}'
-    for o in ["vehicle", "dog"]:
-        if o in new_objects or o in departed_objects:
-            count = len(
-                list(
-                    filter(
-                        lambda p: p["tagName"] == o,
-                        valid_predictions,
-                    )
+    for o in ["vehicle", "dog", "person", "package"]:
+        count = len(
+            list(
+                filter(
+                    lambda p: p["tagName"] == o,
+                    valid_predictions,
                 )
             )
-            logging.info(f"Publishing count {cam.name}/{o}/count={count}")
-            mqtt_client.publish(f"{cam.name}/{o}/count", count, retain=False)
+        )
+        if cam.counts.get(o, -1) != count:
+            logger.info(f"Publishing count {cam.name}/{o}/count={count}")
+            mqtt_client.publish(f"{cam.name}/{o}/count", count, retain=True)
+            cam.counts[o] = count
 
     if len(new_objects):
         if cam.name in ["driveway", "garage"]:

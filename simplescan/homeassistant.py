@@ -126,14 +126,18 @@ class HomeAssistant(object):
         return self.get_state("input_boolean.person_detector")
 
     def echo_speaks(self, message):
-        log.info("Speaking {}".format(message))
-        json = {"message": message, "data": {"type": "tts"}}
-        r = requests.post(
-            f"{self.api}services/notify/alexa_media_kitchen_ecobee4",
-            json=json,
-            headers=self.headers,
-        )
-        return r.content.decode("utf-8")
+        if self.get_presence("group.egge"):
+            log.info("Speaking {}".format(message))
+            json = {"message": message, "data": {"type": "tts"}}
+            r = requests.post(
+                f"{self.api}services/notify/alexa_media_kitchen_ecobee4",
+                json=json,
+                headers=self.headers,
+            )
+            return r.content.decode("utf-8")
+        else:
+            log.info("Not speaking {}".format(message))
+            return True
 
     def mode(self):
         if self.get_state("input_boolean.night_mode"):

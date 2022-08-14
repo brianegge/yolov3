@@ -121,19 +121,52 @@ async def main(options):
     async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=async_cameras)
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-    for cam in filter(lambda c: c.vehicle_check, cams):
-        j = {
-            "name": f"{cam.name} Vehicle Count",
-            "state_topic": "{}/vehicle/count".format(cam.ha_name),
-            "state_class": "measurement",
-            "uniq_id": "{}-vehicle".format(cam.ha_name),
-            "availability_topic": lwt,
-        }
-        mqtt_client.publish(
-            "homeassistant/sensor/{}-vehicle/config".format(cam.ha_name),
-            json.dumps(j),
-            retain=True,
-        )
+    for cam in cams:
+        if cam.vehicle_check:
+            mqtt_client.publish(
+                f"homeassistant/sensor/{cam.ha_name}-vehicle/config",
+                json.dumps(
+                    {
+                        "name": f"{cam.name} Vehicle Count",
+                        "state_topic": f"{cam.ha_name}/vehicle/count",
+                        "state_class": "measurement",
+                        "uniq_id": f"{cam.ha_name}-vehicle",
+                        "availability_topic": lwt,
+                        "icon": "mdi:car",
+                    }
+                ),
+                retain=True,
+            )
+            mqtt_client.publish(
+                f"homeassistant/sensor/{cam.ha_name}-package/config",
+                json.dumps(
+                    {
+                        "name": f"{cam.name} Package Count",
+                        "state_topic": f"{cam.name}/package/count",
+                        "state_class": "measurement",
+                        "uniq_id": f"{cam.ha_name}-package",
+                        "availability_topic": "aicam/status",
+                        "icon": "mdi:package-variant-closed",
+                    }
+                ),
+                retain=True,
+            )
+        for o in ["person", "dog"]:
+            mqtt_client.publish(
+                f"homeassistant/sensor/{cam.ha_name}-{o}/config",
+                json.dumps(
+                    {
+                        "name": f"{cam.name} {o} count",
+                        "state_topic": f"{cam.name}/{o}/count",
+                        "state_class": "measurement",
+                        "uniq_id": f"{cam.ha_name}-{o}",
+                        "availability_topic": "aicam/status",
+                        "icon": "mdi:walk" if o == "person" else "mdi:dog",
+                        "native_value": "int",
+                    }
+                ),
+                retain=True,
+            )
 
     sd.notify("READY=1")
     sd.notify("STATUS=Running")
@@ -243,7 +276,7 @@ async def main(options):
                 prediction_time,
             )
         if len(log_line) > 0:
-            log.debug(log_line)
+            log.info(log_line)
         if prediction_time < 0.1:
             if datetime.now() - cleanup_time > timedelta(minutes=15):
                 log.debug("Cleaning up")
@@ -255,6 +288,12 @@ async def main(options):
                 time.sleep(1.0)
         if "once" in detector_config:
             break
+
+    for cam in cams:
+        mqtt_client.publish(f"{cam.name}/dog/count", None, retain=False)
+        mqtt_client.publish(f"{cam.name}/person/count", None, retain=False)
+        if cam.vehicle_check:
+            mqtt_client.publish(f"{cam.name}/vehicle/count", None, retain=False)
     # graceful shutdown
     log.info("Graceful shutdown initiated")
     mqtt_client.disconnect()  # disconnect gracefully

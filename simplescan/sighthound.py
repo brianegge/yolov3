@@ -97,7 +97,6 @@ def enrich(image_bytes, save_json):
         response = conn.getresponse()
 
     result = json.loads(response.read())
-    print("Detection Results = " + json.dumps(result, indent=4))
     with open(save_json, "w") as f:
         f.write(json.dumps(result, indent=4))
     message = ""
