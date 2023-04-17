@@ -122,7 +122,7 @@ def notify(cam, message, image, predictions, config, ha):
             ha.suppress_notify_person()
             i_type = "person detection off"
         elif tagName == "vehicle" and not notify_vehicle:
-            i = -2
+            i = -4
             i_type = "vehicle detection off"
         elif tagName in mode_priorities:
             i = mode_priorities.getint(p["tagName"])
@@ -136,7 +136,9 @@ def notify(cam, message, image, predictions, config, ha):
         if cam.name == "peach tree" and mode == "night" and i < 1:
             i = 1
             i_type = "fruit robber"
-        if tagName in config["sounds"]:
+        if "departed" in p:
+            sound = config["sounds"]["departed"]
+        elif tagName in config["sounds"]:
             sound = config["sounds"][tagName]
         if (
             tagName == "dog"
@@ -219,7 +221,6 @@ def notify(cam, message, image, predictions, config, ha):
     #    logging.info('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
     if has_visible_vehicles:
         logging.info(pformat(vehicles))
-        ha.turn_on_outside_lights()
         left = max(0, min(p["boundingBox"]["left"] - 0.05 for p in vehicles) * width)
         right = min(
             width,

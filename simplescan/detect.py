@@ -258,6 +258,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
 
     yyyymmdd = date.today().strftime("%Y%m%d")
     save_dir = os.path.join(config["detector"]["save-path"], yyyymmdd)
+    os.makedirs(save_dir, exist_ok=True)
     today_dir = os.path.join(config["detector"]["save-path"], "today")
     if not os.path.exists(today_dir):
         os.symlink(yyyymmdd, today_dir)
@@ -265,7 +266,6 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
         os.unlink(today_dir)
         os.symlink(yyyymmdd, today_dir)
 
-    os.makedirs(save_dir, exist_ok=True)
     if len(departed_objects) > 0 and cam.prior_priority > -3:
         logger.info(
             "{} current={}, prior={}, departed={}".format(

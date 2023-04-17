@@ -156,14 +156,6 @@ class HomeAssistant(object):
         )
         return r.content.decode("utf-8")
 
-    def turn_on_outside_lights(self):
-        r = requests.post(
-            f"{self.api}services/script/turn_on",
-            json={"entity_id": "script.all_exterior_lights_on_bright"},
-            headers=self.headers,
-        )
-        log.info(f"Turned on outside lights {r}")
-
     def house_cleaners_arrived(self):
         if (
             self.last_house_cleaners_arrived is None

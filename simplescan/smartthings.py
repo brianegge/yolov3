@@ -98,9 +98,3 @@ class SmartThings(object):
     #    r = requests.get('http://raspberrypi-zerow.home:8282/mode')
     #    c = r.content.decode("utf-8")
     #    return c.lower()
-
-    # def turn_on_outside_lights(self):
-    #    r = requests.get(self.config['turn_on_outside_lights'])
-    #    c = r.content.decode("utf-8")
-    #    print("Turned on outside lights".format(c))
-    #    return r.content.decode("utf-8")
