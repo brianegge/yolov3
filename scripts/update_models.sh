@@ -4,9 +4,11 @@ set -o errexit
 
 script_dir=$(cd $(dirname $0); pwd)
 cd $script_dir
-cfg=/home/egge/gdrive/dev/packages/packages-yolov4-608-3-tiny-detector.cfg
-weights=/home/egge/gdrive/dev/packages/packages-yolov4-608-3-tiny-detector_best.weights
-labels=/home/egge/gdrive/dev/packages/obj.names
+model_source=/mnt/elements/models
+# model_source=/home/egge/gdrive/dev/packages
+cfg=${model_source}/packages-yolov4-608-3-tiny-detector.cfg
+weights=${model_source}/packages-yolov4-608-3-tiny-detector_best.weights
+labels=${model_source}/packages-yolov4-608-3-tiny-detector.names
 onnx=/home/egge/detector/simplescan/vehicles_yolov4.onnx
 
 # https://github.com/Tianxiaomo/pytorch-YOLOv4
