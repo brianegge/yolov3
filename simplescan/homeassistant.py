@@ -37,27 +37,6 @@ class HomeAssistant(object):
     def open_garage_door(self):
         raise NotImplementedError
 
-    def crack_garage_door(self):
-        if not self.get_state("input_boolean.moon_present"):
-            log.debug("Cracking garage door for Moon")
-            r = requests.post(
-                f"{self.api}services/script/turn_on",
-                json={"entity_id": "script.crack_garage_door"},
-                headers=self.headers,
-            )
-            return r.content.decode("utf-8")
-        else:
-            log.debug("Moon has already returned")
-
-    def let_cat_out(self):
-        log.debug("Letting Moon of out the garage")
-        r = requests.post(
-            f"{self.api}services/script/turn_on",
-            json={"entity_id": "script.let_cat_out"},
-            headers=self.headers,
-        )
-        return r.content.decode("utf-8")
-
     def deer_alert(self, location):
         # invoke webcore piston
         json = {

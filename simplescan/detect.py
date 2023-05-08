@@ -26,152 +26,6 @@ from utils import bb_intersection_over_union, cleanup, draw_bbox, draw_road
 logger = logging.getLogger(__name__)
 
 
-class Camera:
-    def __init__(self, config, excludes):
-        self.name = config["name"]
-        self.ha_name = self.name.replace(" ", "_")
-        self.config = config
-        self.objects = set()
-        self.prev_predictions = {}
-        self.is_file = False
-        self.counts = {}
-        self.vehicle_check = config.getboolean("vehicle_check", False)
-        self.excludes = excludes
-        self.capture_async = config.getboolean("async", False)
-        self.error = None
-        self.image = None
-        self.image_hash = 0
-        self.source = None
-        self.prior_image = None
-        self.prior_time = datetime.fromtimestamp(0)
-        self.prior_priority = -4
-        self.age = 0
-        self.fails = 0
-        self.skip = 0
-        self.ftp_path = config.get("ftp-path", None)
-        self.interval = config.getint("interval", 60)
-        self.globber = None
-        self.session = None
-
-    def poll(self):
-        # logger.debug('polling {}'.format(self.name))
-        if self.ftp_path:
-            img = None
-            while img == None:
-                if self.globber is None:
-                    globber = Path(self.ftp_path).glob("**/*.jpg")
-                try:
-                    f = next(globber)
-                except OSError as e:
-                    logger.error(f"Error scanning {self.ftp_path}: {e}\n{e.args}")
-                    self.globber = None
-                    return None
-                except StopIteration:
-                    self.globber = None
-                    cleanup(self.ftp_path)
-                    return None
-                if datetime.fromtimestamp(
-                    os.path.getmtime(f)
-                ) < datetime.now() - timedelta(minutes=10):
-                    logger.warning(f"Skipping old file {f}")
-                    os.remove(f)
-                    continue
-                img = cv2.imread(str(f))
-                os.remove(f)
-                if img is not None and len(img) > 0:
-                    h = hashlib.md5(img.view(np.uint8)).hexdigest()
-                    if self.image_hash == h:
-                        self.error = "dup"
-                        return None
-                    self.image = img
-                    self.image_hash = h
-                    self.source = f
-                    self.resize()
-                    return self
-                else:
-                    self.error = "bad file"
-        return None
-
-    def capture(self):
-        self.image = None
-        self.resized = None
-        self.resized2 = None
-        if self.skip > 0:
-            self.error = "skip={}".format(self.skip)
-            self.skip -= 1
-            return self
-        if "file" in self.config:
-            self.is_file = True
-            self.image = cv2.imread(self.config["file"])
-            self.source = self.config["file"]
-            self.resize()
-        else:
-            if self.session == None:
-                self.session = requests.Session()
-                if "user" in self.config:
-                    self.session.auth = HTTPDigestAuth(
-                        self.config["user"], self.config["password"]
-                    )
-            try:
-                with self.session.get(
-                    self.config["uri"], timeout=20, stream=True
-                ) as resp:
-                    resp.raise_for_status()
-                    bytes = np.asarray(bytearray(resp.raw.read()), dtype="uint8")
-                    if len(bytes) == 0:
-                        self.error = "empty"
-                        return self
-                    self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
-                    self.image_hash = hashlib.md5(self.image.view(np.uint8)).hexdigest()
-                    self.source = self.config["uri"]
-                    self.resize()
-                    self.error = None
-                    self.fails = 0
-            except Exception as e:
-                self.image = None
-                self.image_hash = 0
-                self.source = None
-                self.resized = None
-                self.skip = 2 ** self.fails
-                self.fails += 1
-                self.session = None
-                self.error = sys.exc_info()[0]
-                logger.exception(f"Error with {self.name}:{self.error}")
-                if self.skip > 12:
-                    self.reboot()
-        return self
-
-    def reboot(self):
-        # "http://treeline-cam.home/cgi-bin/magicBox.cgi?action=reboot"
-        url = (
-            urlparse(self.config["uri"])
-            ._replace(path="/cgi-bin/magicBox.cgi", query="action=reboot")
-            .geturl()
-        )
-        logger.info(f"Rebooting {self.name}: {url}")
-        try:
-            r = requests.get(
-                url, auth=HTTPDigestAuth(self.config["user"], self.config["password"])
-            )
-            r.raise_for_status()
-        except:
-            logger.exception("Failed to reboot %s", self.name)
-
-    def resize(self):
-        hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
-        sum = np.sum(hsv[:, :, 0])
-        if sum == 0:
-            self.resized2 = cv2.resize(
-                cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB), (608, 608)
-            )
-            self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-            self.resized = cv2.resize(self.image, (608, 608))
-        else:
-            resized = cv2.resize(self.image, (608, 608))
-            self.resized = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-            self.resized2 = self.resized
-
-
 def add_centers(predictions):
     for p in predictions:
         bbox = p["boundingBox"]
@@ -181,11 +35,11 @@ def add_centers(predictions):
         center["y"] = bbox["top"] + bbox["height"] / 2.0
 
 
-def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client):
+def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     threshold = config["detector"].getfloat("threshold")
     image = cam.image
     if image is None:
-        return 0, "{}=[{}]".format(cam.name, cam.error)
+        return 0, 0, "{}=[err={}]".format(cam.name, cam.error)
     prediction_start = timer()
     try:
         if len(cam.resized.shape) == 3:
@@ -203,6 +57,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
         # include all vehicle predictions for now
         predictions += vehicle_predictions
     prediction_time = timer() - prediction_start
+    notify_time = 0.0
     # filter out lower predictions
     predictions = list(
         filter(
@@ -289,13 +144,6 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
         else:
             cv2.imwrite(basename + ".jpg", image)
         cam.objects = valid_objects
-    # Always open garage door, we can call this many times
-    if "cat" in valid_objects and cam.name in ["shed", "garage-l", "garage-r"]:
-        logger.info("Letting cat in")
-        ha.crack_garage_door()
-    elif "cat" in valid_objects and cam.name in ["garage"]:
-        logger.info("Letting cat out")
-        ha.let_cat_out()
 
     colors = config["colors"]
     new_predictions = []
@@ -364,6 +212,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
     if len(notify_expired):
         logger.debug(pformat(notify_expired))
         msg = ", ".join([x["msg"] for x in notify_expired])
+        notify_start = timer()
         notify(
             cam,
             msg,
@@ -372,6 +221,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
             config,
             ha,
         )
+        notify_time += timer() - notify_start
 
     new_objects = set(p["tagName"] for p in new_predictions)
 
@@ -379,7 +229,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
     if "deer" in new_objects:
         ha.deer_alert(cam.name)
     # mosquitto_pub -h mqtt.home -t "homeassistant/sensor/deck-dog/config" -r -m '{"name": "deck dog count", "state_topic": "deck/dog/count", "state_class": "measurement", "uniq_id": "deck-dog", "availability_topic": "aicam/status"}'
-    for o in ["vehicle", "dog", "person", "package"]:
+    for o in cam.mqtt:
         count = len(
             list(
                 filter(
@@ -390,7 +240,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
         )
         if cam.counts.get(o, -1) != count:
             logger.info(f"Publishing count {cam.name}/{o}/count={count}")
-            mqtt_client.publish(f"{cam.name}/{o}/count", count, retain=True)
+            cam.mqtt_client.publish(f"{cam.name}/{o}/count", count, retain=True)
             cam.counts[o] = count
 
     if len(new_objects):
@@ -405,7 +255,9 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
         else:
             message = "%s near %s" % (",".join(valid_objects), cam.name)
         if cam.age > 2:
+            notify_start = timer()
             priority = notify(cam, message, im_pil, valid_predictions, config, ha)
+            notify_time += timer() - notify_start
         else:
             logger.info("Skipping notifications until after warm up")
             priority = -4
@@ -481,6 +333,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha, mqtt_client)
 
     return (
         prediction_time,
+        notify_time,
         "{}=[".format(cam.name)
         + ",".join(format_prediction(p) for p in predictions)
         + "]",

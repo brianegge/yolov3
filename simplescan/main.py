@@ -23,7 +23,8 @@ import paho.mqtt.client as paho
 import requests
 import sdnotify
 
-from detect import Camera, detect
+from camera import Camera
+from detect import detect
 from homeassistant import HomeAssistant
 from object_detection_rt import ONNXTensorRTObjectDetection
 from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
@@ -72,6 +73,7 @@ async def main(options):
     detector_config = config["detector"]
     color_model_config = config["color-model"]
     grey_model_config = config["grey-model"]
+    mqtt_icons = config["mqtt_icons"]
     lwt = "aicam/status"
     mqtt_client = paho.Client("aicam")
     mqtt_client.enable_logger(logger=mlog)
@@ -122,46 +124,17 @@ async def main(options):
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     for cam in cams:
-        if cam.vehicle_check:
+        for item in cam.mqtt:
             mqtt_client.publish(
-                f"homeassistant/sensor/{cam.ha_name}-vehicle/config",
+                f"homeassistant/sensor/{cam.ha_name}-{item}/config",
                 json.dumps(
                     {
-                        "name": f"{cam.name} Vehicle Count",
-                        "state_topic": f"{cam.ha_name}/vehicle/count",
+                        "name": f"{cam.name} {item} Count".title(),
+                        "state_topic": f"{cam.ha_name}/{item}/count",
                         "state_class": "measurement",
-                        "uniq_id": f"{cam.ha_name}-vehicle",
+                        "uniq_id": f"{cam.ha_name}-{item}",
                         "availability_topic": lwt,
-                        "icon": "mdi:car",
-                    }
-                ),
-                retain=True,
-            )
-            mqtt_client.publish(
-                f"homeassistant/sensor/{cam.ha_name}-package/config",
-                json.dumps(
-                    {
-                        "name": f"{cam.name} Package Count",
-                        "state_topic": f"{cam.name}/package/count",
-                        "state_class": "measurement",
-                        "uniq_id": f"{cam.ha_name}-package",
-                        "availability_topic": "aicam/status",
-                        "icon": "mdi:package-variant-closed",
-                    }
-                ),
-                retain=True,
-            )
-        for o in ["person", "dog"]:
-            mqtt_client.publish(
-                f"homeassistant/sensor/{cam.ha_name}-{o}/config",
-                json.dumps(
-                    {
-                        "name": f"{cam.name} {o} count",
-                        "state_topic": f"{cam.name}/{o}/count",
-                        "state_class": "measurement",
-                        "uniq_id": f"{cam.ha_name}-{o}",
-                        "availability_topic": "aicam/status",
-                        "icon": "mdi:walk" if o == "person" else "mdi:dog",
+                        "icon": mqtt_icons.get(item, f"mdi:{item}"),
                         "native_value": "int",
                     }
                 ),
@@ -177,6 +150,7 @@ async def main(options):
         sd.notify("WATCHDOG=1")
         start_time = timer()
         prediction_time = 0.0
+        notify_time = 0.0
         capture_futures = []
         messages = []
         log_line = ""
@@ -184,7 +158,7 @@ async def main(options):
             for cam in cams:
                 if cam.poll() is None:
                     cam.capture()
-                p, m = detect(
+                p, n, m = detect(
                     cam,
                     color_model,
                     grey_model,
@@ -192,9 +166,9 @@ async def main(options):
                     config,
                     st,
                     ha,
-                    mqtt_client,
                 )
                 prediction_time += p
+                notify_time += n
                 messages.append(m)
         else:
             for cam in filter(lambda cam: cam.ftp_path, cams):
@@ -210,16 +184,16 @@ async def main(options):
                 try:
                     cam = f.result()
                     if cam:
-                        p, m = detect(
+                        p, n, m = detect(
                             cam,
                             color_model,
                             grey_model,
                             vehicle_model,
                             config,
                             ha,
-                            mqtt_client,
                         )
                         prediction_time += p
+                        notify_time += n
                         messages.append(m)
                         count += 1
                 except KeyboardInterrupt:
@@ -246,22 +220,22 @@ async def main(options):
                             sys.exc_info()[0],
                         )
                 if count > 0:
-                    log_line = "Snapshoting "
+                    log_line = "Snapshotting "
 
                 for f in concurrent.futures.as_completed(capture_futures, timeout=180):
                     try:
                         cam = f.result()
                         if cam:
-                            p, m = detect(
+                            p, n, m = detect(
                                 cam,
                                 color_model,
                                 grey_model,
                                 vehicle_model,
                                 config,
                                 ha,
-                                mqtt_client,
                             )
                             prediction_time += p
+                            notify_time += n
                             messages.append(m)
                     except KeyboardInterrupt:
                         return
@@ -275,6 +249,8 @@ async def main(options):
                 (end_time - start_time),
                 prediction_time,
             )
+            if notify_time > 0:
+                log_line += ", %.2fs notifying" % (notify_time)
         if len(log_line) > 0:
             log.info(log_line)
         if prediction_time < 0.1:
@@ -289,11 +265,11 @@ async def main(options):
         if "once" in detector_config:
             break
 
+    # set item counts to unavailable
     for cam in cams:
-        mqtt_client.publish(f"{cam.name}/dog/count", None, retain=False)
-        mqtt_client.publish(f"{cam.name}/person/count", None, retain=False)
-        if cam.vehicle_check:
-            mqtt_client.publish(f"{cam.name}/vehicle/count", None, retain=False)
+        for item in cam.mqtt:
+            mqtt_client.publish(f"{cam.name}/{item}/count", None, retain=False)
+        del cam
     # graceful shutdown
     log.info("Graceful shutdown initiated")
     mqtt_client.disconnect()  # disconnect gracefully

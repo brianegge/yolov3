@@ -25,9 +25,9 @@ then
   echo "Updated $onnx"
 fi
 
-cfg=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-3-tiny-detector.cfg
-weights=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-3-tiny-detector_best.weights
-labels=/home/egge/gdrive/dev/ipcams/obj.names
+cfg=${model_source}/ipcams-yolov4-608-3-tiny-detector.cfg
+weights=${model_source}/ipcams-yolov4-608-3-tiny-detector_best.weights
+labels=/${model_source}/ipcams.names
 onnx=/home/egge/detector/simplescan/ipcams_color_yolov4.onnx
 
 if [ $weights -nt $onnx ]
@@ -40,8 +40,8 @@ then
   echo "Updated $onnx"
 fi
 
-cfg=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-1-tiny-detector.cfg
-weights=/home/egge/gdrive/dev/ipcams/ipcams-yolov4-608-1-tiny-detector_best.weights
+cfg=${model_source}/ipcams-yolov4-608-1-tiny-detector.cfg
+weights=${model_source}/ipcams-yolov4-608-1-tiny-detector_best.weights
 onnx=/home/egge/detector/simplescan/ipcams_grey_yolov4.onnx
 if [ $weights -nt $onnx ]
 then
