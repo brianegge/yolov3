@@ -73,12 +73,14 @@ def notify(cam, message, image, predictions, config, ha):
         filter(lambda p: p["tagName"] == "package" and not "departed" in p, predictions)
     )
     has_package = len(packages) > 0
-    if has_vehicles:
+    if has_vehicles and cam.name != "mailbox":
         notify_vehicle = ha.should_notify_vehicle()
         logging.info(f"ha.should_notify_vehicle={notify_vehicle}")
     else:
         notify_vehicle = False
-    if has_person:
+    if has_person and cam.name == "mailbox":
+        notify_person = (mode == "night")
+    elif has_person:
         notify_person = ha.should_notify_person()
         logging.info(f"see {len(people)} people, notify_person={notify_person}")
     else:
@@ -99,6 +101,9 @@ def notify(cam, message, image, predictions, config, ha):
             logging.info(
                 f"Notifying person because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
             )
+    else:
+        # If person detection is off, override night or away mode
+        mode = "home"
     sound = "pushover"
     for p in list(filter(lambda p: "ignore" in p or "iou" in p, predictions)):
         p["priority"] = -4
@@ -121,6 +126,10 @@ def notify(cam, message, image, predictions, config, ha):
             # we are still outside, keep detection off
             ha.suppress_notify_person()
             i_type = "person detection off"
+        elif tagName == "deer" and has_person:
+            i = -1
+            # this should never occur
+            i_type = "deer and person not possible"
         elif tagName == "vehicle" and not notify_vehicle:
             i = -4
             i_type = "vehicle detection off"

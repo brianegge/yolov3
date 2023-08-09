@@ -33,6 +33,7 @@ class Camera:
         self.prev_predictions = {}
         self.is_file = False
         self.counts = {}
+        self.last_show_count = -1
         self.vehicle_check = config.getboolean("vehicle_check", False)
         self.excludes = excludes
         self.capture_async = config.getboolean("async", False)
@@ -47,11 +48,11 @@ class Camera:
         self.fails = 0
         self.skip = 0
         self.ftp_path = config.get("ftp-path", None)
-        self.interval = config.getint("interval", 60)
+        self.interval = config.getint("interval", 30)
         self.globber = None
         self.session = None
         self.mqtt = set(config.get("mqtt", "").split(","))
-        self.mqtt_client = paho.Client(f"aicam-{self.name}")
+        self.mqtt_client = paho.Client(f"aicam-{self.ha_name}")
         self.mqtt_client.connect("mqtt.home", 1883)
         self.mqtt_client.loop_start()
 

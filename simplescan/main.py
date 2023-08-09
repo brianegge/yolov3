@@ -75,7 +75,7 @@ async def main(options):
     grey_model_config = config["grey-model"]
     mqtt_icons = config["mqtt_icons"]
     lwt = "aicam/status"
-    mqtt_client = paho.Client("aicam")
+    mqtt_client = paho.Client(client_id="aicam")
     mqtt_client.enable_logger(logger=mlog)
     mqtt_client.on_publish = on_publish
     mqtt_client.on_connect = on_connect
@@ -124,6 +124,23 @@ async def main(options):
     sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     for cam in cams:
+        # mosquitto_pub -h mqtt.home -t homeassistant/binary_sensor/show-shed/config -r -m '{"name": "Show Shed", "state_topic": "shed/show", "device_class": "occupancy", "uniq_id": "show-shed", "availability_topic": "aicam/status", "native_value": "boolean", "payload_off":false, "payload_on":true}'
+        mqtt_client.publish(
+            f"homeassistant/binary_sensor/show-{cam.ha_name}/config",
+            json.dumps(
+                {
+                    "name": f"Show {cam.name}".title(),
+                    "state_topic": f"{cam.ha_name}/show",
+                    "device_class": "occupancy",
+                    "uniq_id": f"show-{cam.ha_name}",
+                    "availability_topic": lwt,
+                    "native_value": "boolean",
+                    "payload_off": False,
+                    "payload_on": True,
+                }
+            ),
+            retain=True,
+        )
         for item in cam.mqtt:
             mqtt_client.publish(
                 f"homeassistant/sensor/{cam.ha_name}-{item}/config",
@@ -269,6 +286,7 @@ async def main(options):
     for cam in cams:
         for item in cam.mqtt:
             mqtt_client.publish(f"{cam.name}/{item}/count", None, retain=False)
+            mqtt_client.publish(f"{cam.ha_name}/{item}/count", None, retain=False)
         del cam
     # graceful shutdown
     log.info("Graceful shutdown initiated")

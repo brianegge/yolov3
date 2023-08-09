@@ -85,7 +85,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 p["ignore"] = "road"
     elif cam.name == "garage-l":
         for p in predictions:
-            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.22 and (
+            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.23 and (
                 p["tagName"] in ["vehicle", "person"]
             ):
                 p["ignore"] = "neighbor"
@@ -193,7 +193,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         if cam.name in ["peach tree", "driveway"]:
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
         elif cam.name in ["garage-l"]:
-            draw_road(im_pil, [(0, 0.22), (1.0, 0.22)])
+            draw_road(im_pil, [(0, 0.23), (1.0, 0.23)])
     notify_expired = []
     for e in expired:
         draw_bbox(im_pil, e, "grey", width=4)
@@ -224,11 +224,16 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         notify_time += timer() - notify_start
 
     new_objects = set(p["tagName"] for p in new_predictions)
+    min_age = 1000000
+    for p in valid_predictions:
+        if "age" in p:
+            min_age = min(p["age"], min_age)
 
     # Only notify deer if not seen
     if "deer" in new_objects:
         ha.deer_alert(cam.name)
     # mosquitto_pub -h mqtt.home -t "homeassistant/sensor/deck-dog/config" -r -m '{"name": "deck dog count", "state_topic": "deck/dog/count", "state_class": "measurement", "uniq_id": "deck-dog", "availability_topic": "aicam/status"}'
+    show_count = 0
     for o in cam.mqtt:
         count = len(
             list(
@@ -238,10 +243,14 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 )
             )
         )
+        show_count += count
         if cam.counts.get(o, -1) != count:
-            logger.info(f"Publishing count {cam.name}/{o}/count={count}")
-            cam.mqtt_client.publish(f"{cam.name}/{o}/count", count, retain=True)
+            logger.info(f"Publishing count {cam.ha_name}/{o}/count={count}")
+            cam.mqtt_client.publish(f"{cam.ha_name}/{o}/count", count, retain=False)
             cam.counts[o] = count
+    if show_count != cam.last_show_count:
+        cam.mqtt_client.publish(f"{cam.ha_name}/show", show_count > 0, retain=False)
+        cam.last_show_count = show_count
 
     if len(new_objects):
         if cam.name in ["driveway", "garage"]:
@@ -270,7 +279,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     valid_predictions = list(filter(lambda p: not ("ignore" in p), predictions))
     cam.objects = set(p["tagName"] for p in valid_predictions)
 
-    if priority > -3 and not cam.is_file:
+    if priority > -3 and not cam.is_file and min_age < 2:
         # don't save file if we're reading from a file
         if cam.prior_image is not None:
             priorname = (
