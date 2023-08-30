@@ -78,32 +78,30 @@ def notify(cam, message, image, predictions, config, ha):
         logging.info(f"ha.should_notify_vehicle={notify_vehicle}")
     else:
         notify_vehicle = False
-    if has_person and cam.name == "mailbox":
-        notify_person = (mode == "night")
-    elif has_person:
+    if has_person:
         notify_person = ha.should_notify_person()
         logging.info(f"see {len(people)} people, notify_person={notify_person}")
     else:
         notify_person = False
-    if notify_person:
-        door_left = ha.get_door_left()
-        door_right = ha.get_door_right()
-        do_ignore = (
-            cam.name in ["deck", "play"] and (door_left or door_left) and mode == "home"
-        )
-        if do_ignore:
-            logging.info(
-                f"Ignoring person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
-            )
-            notify_person = False
-            ha.suppress_notify_person()
-        else:
-            logging.info(
-                f"Notifying person because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
-            )
-    else:
-        # If person detection is off, override night or away mode
-        mode = "home"
+    # if notify_person:
+    #    door_left = ha.get_door_left()
+    #    door_right = ha.get_door_right()
+    #    do_ignore = (
+    #        cam.name in ["deck", "play"] and (door_left or door_left) and mode == "home"
+    #    )
+    #    if do_ignore:
+    #        logging.info(
+    #            f"Ignoring person ignore={do_ignore} because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
+    #        )
+    #        notify_person = False
+    #        ha.suppress_notify_person()
+    #    else:
+    #        logging.info(
+    #            f"Notifying person because door left={door_left}, door_right={door_right}, cam={cam.name} and mode={mode}"
+    #        )
+    # else:
+    #    # If person detection is off, override night or away mode
+    #    mode = "home"
     sound = "pushover"
     for p in list(filter(lambda p: "ignore" in p or "iou" in p, predictions)):
         p["priority"] = -4
@@ -111,7 +109,14 @@ def notify(cam, message, image, predictions, config, ha):
         tagName = p["tagName"]
         probability = p["probability"]
         i_type = None
-        if tagName == "vehicle" and cam.name == "front entry":
+        if tagName == "person_road":
+            if mode == "night" and ha.is_time_after_midnight_and_before_six():
+                notify_person = True
+                i = 0
+            else:
+                notify_person = False
+                i = -2
+        elif tagName == "vehicle" and cam.name == "front entry":
             i = -3
             i_type = "vehicle rule"
             # cars should not be possible here, unless in road
@@ -124,7 +129,7 @@ def notify(cam, message, image, predictions, config, ha):
         elif tagName == "person" and has_person and not notify_person:
             i = -4
             # we are still outside, keep detection off
-            ha.suppress_notify_person()
+            # ha.suppress_notify_person()
             i_type = "person detection off"
         elif tagName == "deer" and has_person:
             i = -1

@@ -126,6 +126,19 @@ class HomeAssistant(object):
         else:
             return "away"
 
+    def is_dark(self):
+        return self.get_state("binary_sensor.is_dark")
+
+    def is_time_after_midnight_and_before_six(self):
+        current_time = datetime.datetime.now().time()
+        midnight = datetime.time(0, 0)
+        six_am = datetime.time(6, 0)
+
+        if midnight <= current_time < six_am:
+            return True
+        else:
+            return False
+
     def suppress_notify_person(self):
         log.debug("Keep person notify suppressed")
         r = requests.post(

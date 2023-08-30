@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -49,7 +50,6 @@ class Camera:
         self.skip = 0
         self.ftp_path = config.get("ftp-path", None)
         self.interval = config.getint("interval", 30)
-        self.globber = None
         self.session = None
         self.mqtt = set(config.get("mqtt", "").split(","))
         self.mqtt_client = paho.Client(f"aicam-{self.ha_name}")
@@ -64,39 +64,47 @@ class Camera:
         # logger.debug('polling {}'.format(self.name))
         if self.ftp_path:
             img = None
-            while img == None:
-                if self.globber is None:
-                    globber = Path(self.ftp_path).glob("**/*.jpg")
-                try:
-                    f = next(globber)
-                except OSError as e:
-                    logger.error(f"Error scanning {self.ftp_path}: {e}\n{e.args}")
-                    self.globber = None
-                    return None
-                except StopIteration:
-                    self.globber = None
+            try:
+                files = sorted(
+                    Path(self.ftp_path).glob("**/*.jpg"), key=os.path.getmtime
+                )
+                if len(files) == 0:
                     cleanup(self.ftp_path)
                     return None
+            except OSError as e:
+                logger.error(f"Error scanning {self.ftp_path}: {e}\n{e.args}")
+                return None
+            good_files = []
+            for f in files:
                 if datetime.fromtimestamp(
                     os.path.getmtime(f)
-                ) < datetime.now() - timedelta(minutes=10):
+                ) < datetime.now() - timedelta(minutes=5):
                     logger.warning(f"Skipping old file {f}")
                     os.remove(f)
                     continue
-                img = cv2.imread(str(f))
-                os.remove(f)
-                if img is not None and len(img) > 0:
-                    h = hashlib.md5(img.view(np.uint8)).hexdigest()
-                    if self.image_hash == h:
-                        self.error = "dup"
-                        return None
-                    self.image = img
-                    self.image_hash = h
-                    self.source = f
-                    self.resize()
-                    return self
                 else:
-                    self.error = "bad file"
+                    good_files.append(f)
+            if len(good_files) == 0:
+                return None
+            f = good_files[0]
+            completedProc = subprocess.run(["/bin/fuser", str(f)])
+            if completedProc.returncode == 0:
+                print(f"$f is open for writing")
+                return None
+            img = cv2.imread(str(f))
+            os.remove(f)
+            if img is not None and len(img) > 0:
+                h = hashlib.md5(img.view(np.uint8)).hexdigest()
+                if self.image_hash == h:
+                    self.error = "dup"
+                    return None
+                self.image = img
+                self.image_hash = h
+                self.source = f
+                self.resize()
+                return self
+            else:
+                self.error = "bad file"
         return None
 
     def capture(self):
