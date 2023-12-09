@@ -40,11 +40,17 @@
     "dog":[
       {"left": 0.94872426, "top": 0.08904112, "width": 0.0339014, "height": 0.09308764}
     ],
+    "package":[
+      {"left": 0.40860748, "top": 0.13643087, "width": 0.04250881, "height": 0.11933862, "comment": "halloween decor"},
+      {"left": 0.41742212, "top": 0.05121274, "width": 0.03571311, "height": 0.19028971, "comment": "halloween decor"}
+    ],
     "person":[
       {"left": 0.04538133, "top": 0.40441977, "width": 0.02591759, "height": 0.06950566, "comment": "septic conduit"},
       {"left": 0.03967356, "top": 0.34076139, "width": 0.07267255, "height": 0.1341379,  "comment": "septic cover"},
       {"left": 0.03952874, "top": 0.38616025, "width": 0.02464007, "height": 0.10033245},
-      {"left": 0.79617983, "top": 0.24567732, "width": 0.01620942, "height": 0.10276258, "comment": "christmas light"}
+      {"left": 0.79617983, "top": 0.24567732, "width": 0.01620942, "height": 0.10276258, "comment": "christmas light"},
+      {"left": 0.40860748, "top": 0.13643087, "width": 0.04250881, "height": 0.11933862, "comment": "halloween decor"},
+      {"left": 0.41742212, "top": 0.05121274, "width": 0.03571311, "height": 0.19028971, "comment": "halloween decor"}
     ]
   },
   "front lawn":{
@@ -113,6 +119,12 @@
     "deer":[
     ],
     "person":[
+      { "left": 0.30571139, "top": 0.30015239, "width": 0.03163514, "height": 0.10174271 }
+    ]
+  },
+  "tree line":{
+    "person":[
+      { "left": 0.65925467, "top": 0.70996541, "width": 0.03469634, "height": 0.14122623 }
     ]
   },
   "west lawn":{

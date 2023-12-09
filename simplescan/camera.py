@@ -87,6 +87,8 @@ class Camera:
             if len(good_files) == 0:
                 return None
             f = good_files[0]
+            # requires SUID on fuser
+            # sudo chmod u+s /bin/fuser
             completedProc = subprocess.run(["/bin/fuser", str(f)])
             if completedProc.returncode == 0:
                 print(f"$f is open for writing")
