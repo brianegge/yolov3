@@ -85,10 +85,14 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 p["ignore"] = "road"
                 if p["tagName"] == "person":
                     p["tagName"] = "person_road"
+                if p["tagName"] == "vehicle":
+                    p["tagName"] = "vehicle_road"
     elif cam.name == "mailbox":
         for p in predictions:
             if p["tagName"] == "person":
                 p["tagName"] = "person_road"
+            if p["tagName"] == "vehicle":
+                p["tagName"] = "vehicle_road"
     elif cam.name == "garage-l":
         for p in predictions:
             if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.23 and (

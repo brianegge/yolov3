@@ -164,10 +164,10 @@ def notify(cam, message, image, predictions, config, ha):
             i_type = "dog in garage rule"
         if tagName == "dog" and p["camName"] == "deck" and i > -3:
             i = -3
-            i_type = "dog on deck"
-        if tagName == "fox" and p["camName"] == "deck" and i < 1:
+            i_type = f"{tagName} on {p['camName']}"
+        if tagName in ["fox", "coyote"] and p["camName"] == "deck" and i < 1:
             i = 1
-            i_type = "fox on deck"
+            i_type = f"{tagName} on {p['camName']}"
         if i is not None:
             p["priority"] = i
             p["priority_type"] = i_type
