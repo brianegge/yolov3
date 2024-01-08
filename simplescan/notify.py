@@ -156,13 +156,13 @@ def notify(cam, message, image, predictions, config, ha):
             sound = config["sounds"][tagName]
         if (
             tagName == "dog"
-            and p["camName"] == "garage"
+            and (p["camName"] == "garage" or p["camName"] == "deck")
             and probability > 0.9
             and not has_person
         ):
             i = 1
             i_type = "dog in garage rule"
-        if tagName == "dog" and p["camName"] == "deck" and i > -3:
+        elif tagName == "dog" and p["camName"] == "deck" and i > -3:
             i = -3
             i_type = f"{tagName} on {p['camName']}"
         if tagName in ["fox", "coyote"] and p["camName"] == "deck" and i < 1:
@@ -329,34 +329,34 @@ def notify(cam, message, image, predictions, config, ha):
         except:
             logging.exception("Failed to enrich via sighthound")
 
-    if has_package and (priority >= 0 or has_dog):
-        prob = max(map(lambda x: x["probability"], packages))
-        logging.info(
-            f"has_package={has_package}, has_dog={has_dog}, prob={prob}, mode={mode}"
-        )
-        # if has_package and has_dog:
-        #    ha.echo_speaks(
-        #        "Rufus is opening package near {}".format(packages[0]["camName"])
-        #    )
-        if prob > 0.9:
-            if len(packages) == 1:
-                ha.echo_speaks(
-                    "Package delivered near {}".format(packages[0]["camName"])
-                )
-            else:
-                ha.echo_speaks(
-                    "{} packages delivered near {}".format(
-                        len(packages), packages[0]["camName"]
-                    )
-                )
-        else:
-            logging.info(
-                "Not speaking package delivery because probability {} < 0.9".format(
-                    prob
-                )
-            )
-            if not has_dog:
-                priority = -1
+    #    if has_package and (priority >= 0 or has_dog):
+    #        prob = max(map(lambda x: x["probability"], packages))
+    #        logging.info(
+    #            f"has_package={has_package}, has_dog={has_dog}, prob={prob}, mode={mode}"
+    #        )
+    #        # if has_package and has_dog:
+    #        #    ha.echo_speaks(
+    #        #        "Rufus is opening package near {}".format(packages[0]["camName"])
+    #        #    )
+    #        if prob > 0.9:
+    #            if len(packages) == 1:
+    #                ha.echo_speaks(
+    #                    "Package delivered near {}".format(packages[0]["camName"])
+    #                )
+    #            else:
+    #                ha.echo_speaks(
+    #                    "{} packages delivered near {}".format(
+    #                        len(packages), packages[0]["camName"]
+    #                    )
+    #                )
+    #        else:
+    #            logging.info(
+    #                "Not speaking package delivery because probability {} < 0.9".format(
+    #                    prob
+    #                )
+    #            )
+    #            if not has_dog:
+    #                priority = -1
 
     # prepare post
     output_bytes = BytesIO()

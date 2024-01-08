@@ -141,6 +141,7 @@ async def main(options):
             ),
             retain=True,
         )
+        mqtt_client.publish(f"{cam.ha_name}/show", False, retain=True)
         for item in cam.mqtt:
             mqtt_client.publish(
                 f"homeassistant/sensor/{cam.ha_name}-{item}/config",
@@ -157,6 +158,7 @@ async def main(options):
                 ),
                 retain=True,
             )
+            mqtt_client.publish(f"{cam.ha_name}/{item}/count", 0, retain=True)
 
     sd.notify("READY=1")
     sd.notify("STATUS=Running")

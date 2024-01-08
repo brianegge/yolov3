@@ -95,7 +95,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 p["tagName"] = "vehicle_road"
     elif cam.name == "garage-l":
         for p in predictions:
-            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.23 and (
+            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24 and (
                 p["tagName"] in ["vehicle", "person"]
             ):
                 p["ignore"] = "neighbor"
@@ -203,7 +203,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         if cam.name in ["peach tree", "driveway"]:
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
         elif cam.name in ["garage-l"]:
-            draw_road(im_pil, [(0, 0.23), (1.0, 0.23)])
+            draw_road(im_pil, [(0, 0.24), (1.0, 0.24)])
     notify_expired = []
     for e in expired:
         draw_bbox(im_pil, e, "grey", width=4)
@@ -248,7 +248,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         count = len(
             list(
                 filter(
-                    lambda p: p["tagName"] == o,
+                    lambda p: p["tagName"] == o and (o != "package" or p["age"] > 0),
                     valid_predictions,
                 )
             )
