@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # The steps implemented in the object detection sample code:
 # 1. for an image of width and height being (w, h) pixels, resize image to (w', h'), where w/h = w'/h' and w' x h' = 262144
 # 2. resize network input size to (w', h')
@@ -12,6 +13,7 @@ import faulthandler
 import json
 import logging
 import os
+import pathlib
 import signal
 import subprocess
 import sys
@@ -97,6 +99,9 @@ async def main(options):
     if "excludes-file" in detector_config:
         with open(detector_config["excludes-file"]) as f:
             excludes = json.load(f)
+    # make dirs
+    static_dir = os.path.join(config["detector"]["save-path"], "static")
+    pathlib.Path(static_dir).mkdir(parents=True, exist_ok=True)
 
     sd = sdnotify.SystemdNotifier()
     sd.notify("STATUS=Loading color model")
@@ -120,8 +125,10 @@ async def main(options):
     async_cameras = len(list(filter(lambda cam: cam.capture_async, cams)))
     # async_cameras = 4
     log.info("%i async workers" % async_cameras)
-    async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=async_cameras)
-    sync_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    if async_cameras > 0 and not options.sync:
+        async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=async_cameras)
+    else:
+        async_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     for cam in cams:
         # mosquitto_pub -h mqtt.home -t homeassistant/binary_sensor/show-shed/config -r -m '{"name": "Show Shed", "state_topic": "shed/show", "device_class": "occupancy", "uniq_id": "show-shed", "availability_topic": "aicam/status", "native_value": "boolean", "payload_off":false, "payload_on":true}'
@@ -173,32 +180,54 @@ async def main(options):
         capture_futures = []
         messages = []
         log_line = ""
-        if options.sync:
-            for cam in cams:
-                if cam.poll() is None:
-                    cam.capture()
-                p, n, m = detect(
-                    cam,
-                    color_model,
-                    grey_model,
-                    vehicle_model,
-                    config,
-                    st,
-                    ha,
-                )
-                prediction_time += p
-                notify_time += n
-                messages.append(m)
-        else:
-            for cam in filter(lambda cam: cam.ftp_path, cams):
+        for cam in filter(lambda cam: cam.ftp_path, cams):
+            try:
+                capture_futures.append(async_pool.submit(cam.poll))
+            except KeyboardInterrupt:
+                return
+            except requests.exceptions.ConnectionError:
+                log.warning("cam:%s poll:" % cam.name, sys.exc_info()[0])
+
+        count = 0
+        for f in concurrent.futures.as_completed(capture_futures, timeout=180):
+            try:
+                cam = f.result()
+                if cam:
+                    p, n, m = detect(
+                        cam,
+                        color_model,
+                        grey_model,
+                        vehicle_model,
+                        config,
+                        ha,
+                    )
+                    prediction_time += p
+                    notify_time += n
+                    messages.append(m)
+                    count += 1
+            except KeyboardInterrupt:
+                return
+
+        if count == 0:
+            # scan each camera
+            for cam in filter(
+                lambda cam: (datetime.now() - cam.prior_time).total_seconds()
+                > cam.interval,
+                cams,
+            ):
                 try:
-                    capture_futures.append(async_pool.submit(cam.poll))
+                    capture_futures.append(async_pool.submit(cam.capture))
+                    count += 1
                 except KeyboardInterrupt:
                     return
                 except requests.exceptions.ConnectionError:
-                    log.warning("cam:%s poll:" % cam.name, sys.exc_info()[0])
+                    log.warning(
+                        "cam:%s requests.exceptions.ConnectionError:" % cam.name,
+                        sys.exc_info()[0],
+                    )
+            if count > 0:
+                log_line = "Snapshotting "
 
-            count = 0
             for f in concurrent.futures.as_completed(capture_futures, timeout=180):
                 try:
                     cam = f.result()
@@ -214,52 +243,10 @@ async def main(options):
                         prediction_time += p
                         notify_time += n
                         messages.append(m)
-                        count += 1
                 except KeyboardInterrupt:
                     return
-
-            if count == 0:
-                # scan each camera
-                for cam in filter(
-                    lambda cam: (datetime.now() - cam.prior_time).total_seconds()
-                    > cam.interval,
-                    cams,
-                ):
-                    try:
-                        if cam.capture_async and not options.sync:
-                            capture_futures.append(async_pool.submit(cam.capture))
-                        else:
-                            capture_futures.append(sync_pool.submit(cam.capture))
-                        count += 1
-                    except KeyboardInterrupt:
-                        return
-                    except requests.exceptions.ConnectionError:
-                        log.warning(
-                            "cam:%s requests.exceptions.ConnectionError:" % cam.name,
-                            sys.exc_info()[0],
-                        )
-                if count > 0:
-                    log_line = "Snapshotting "
-
-                for f in concurrent.futures.as_completed(capture_futures, timeout=180):
-                    try:
-                        cam = f.result()
-                        if cam:
-                            p, n, m = detect(
-                                cam,
-                                color_model,
-                                grey_model,
-                                vehicle_model,
-                                config,
-                                ha,
-                            )
-                            prediction_time += p
-                            notify_time += n
-                            messages.append(m)
-                    except KeyboardInterrupt:
-                        return
-            else:
-                log_line = "Reading "
+        else:
+            log_line = "Reading "
 
         end_time = timer()
         if count > 0:
@@ -305,7 +292,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process cameras")
     parser.add_argument("--trt", action="store_true")
     parser.add_argument("--sync", action="store_true")
-    parser.add_argument("config_file", nargs="?", default="config.txt")
+    parser.add_argument("--config_file", nargs="?", default="config.txt")
 
     handlers = [
         logging.StreamHandler(),

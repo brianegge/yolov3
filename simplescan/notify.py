@@ -11,7 +11,7 @@ from pprint import pformat
 import aiohttp
 import requests
 
-import sighthound
+import codeproject
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,12 @@ def notify(cam, message, image, predictions, config, ha):
     )
     has_person = len(people) > 0
     has_dog = len(list(filter(lambda p: p["tagName"] == "dog", predictions))) > 0
+    has_person_road = (
+        len(list(filter(lambda p: p["tagName"] == "person_road", predictions))) > 0
+    )
+    has_dog_road = (
+        len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
+    )
     packages = list(
         filter(lambda p: p["tagName"] == "package" and not "departed" in p, predictions)
     )
@@ -115,7 +121,14 @@ def notify(cam, message, image, predictions, config, ha):
                 i = 0
             else:
                 notify_person = False
-                i = -2
+                i = -4
+        elif tagName == "dog_road":
+            if has_person_road:
+                i = -3
+                i_type = "person walking dog"
+            else:
+                i = 1
+                i_type = "dog without person"
         elif tagName == "vehicle" and cam.name == "front entry":
             i = -3
             i_type = "vehicle rule"
@@ -154,17 +167,20 @@ def notify(cam, message, image, predictions, config, ha):
             sound = config["sounds"]["departed"]
         elif tagName in config["sounds"]:
             sound = config["sounds"][tagName]
+        # if tagName == "dog" and (p["camName"] == "deck") and probability < 0.9:
+        #    i = 0
+        #    i_type = "maybe dog rule"
         if (
             tagName == "dog"
-            and (p["camName"] == "garage" or p["camName"] == "deck")
+            and (p["camName"] == "garage")
             and probability > 0.9
             and not has_person
         ):
             i = 1
             i_type = "dog in garage rule"
-        elif tagName == "dog" and p["camName"] == "deck" and i > -3:
-            i = -3
-            i_type = f"{tagName} on {p['camName']}"
+        # elif tagName == "dog" and p["camName"] == "deck" and i > -3:
+        #    i = -3
+        #    i_type = f"{tagName} on {p['camName']}"
         if tagName in ["fox", "coyote"] and p["camName"] == "deck" and i < 1:
             i = 1
             i_type = f"{tagName} on {p['camName']}"
@@ -228,6 +244,10 @@ def notify(cam, message, image, predictions, config, ha):
     # logging.info("Cropping to %d,%d,%d,%d" % crop_rectangle)
     cropped_image = image.crop(crop_rectangle)
 
+    static_dir = os.path.join(config["detector"]["save-path"], "static")
+    for p in predictions:
+        cropped_image.save(os.path.join(static_dir, f"{p['tagName']}.jpg"))
+
     if priority <= -3:
         # logging.info('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
         return priority
@@ -264,7 +284,7 @@ def notify(cam, message, image, predictions, config, ha):
             + "-"
             + vehicles[0]["camName"].replace(" ", "_")
             + "-"
-            + "sighthound.jpg",
+            + "codeproject.jpg",
         )
         vehicle_image.save(save_vehicle)
         vehicle_bytes = BytesIO()
@@ -277,57 +297,60 @@ def notify(cam, message, image, predictions, config, ha):
                 + "-"
                 + vehicles[0]["camName"].replace(" ", "_")
                 + "-"
-                + "sighthound.txt",
+                + "codeproject.txt",
             )
-            enrichments = sighthound.enrich(vehicle_bytes.read(), save_json)
-            owner = None
+            enrichments = codeproject.enrich(vehicle_bytes.read(), save_json)
             make = None
             plate_name = None
+            vehicle_message = ""
             if enrichments["count"] == 0:
                 # Don't announce if sighthound can't find a vehicle
                 notify_vehicle = False
             for plate in enrichments["plates"]:
                 guesses = (
-                    [plate["name"]]
-                    + list(edits1(plate["name"]))
-                    + list(edits2(plate["name"]))
+                    [plate]
+                    + [plate.replace(" ", "")]
+                    + list(edits1(plate))
+                    + list(edits2(plate))
                 )
                 for guess in guesses:
                     if guess in license_plates:
-                        owner = license_plates[guess].get("owner")
-                        make = license_plates[guess].get("make")
-                        if license_plates[guess].get("announce", True) == False:
+                        if len(vehicle_message) > 0:
+                            vehicle_message += " and "
+                        r = license_plates[guess]
+                        if "owner" in r:
+                            vehicle_message += r["owner"] + "'s "
+                            if r["owner"].lower() == "house cleaner":
+                                ha.house_cleaners_arrived()
+                        if "color" in r:
+                            vehicle_message += r["color"] + " "
+                        if "make" in r:
+                            vehicle_message += r["make"] + " "
+                            if "model" in r:
+                                vehicle_message += r["model"]
+                        else:
+                            vehicle_message += "vehicle"
+                        if r.get("announce", True) == False:
                             logging.info(
                                 "Ignoring {}'s vehicle with plate {}".format(
                                     owner, plate
                                 )
                             )
-                            return -3
-                        if owner and owner.lower() == "house cleaner":
-                            ha.house_cleaners_arrived()
+                            vehicle_message = None
                         break
-                if owner is None and plate["confidence"] > 0.05:
-                    plate_name = plate["name"]
-                    if "state" in plate:
-                        plate_name = "{} {}".format(plate["state"], plate_name)
-            if len(enrichments["message"]) > 0:
-                vehicle_message = enrichments["message"]
-                if owner is not None:
-                    vehicle_message = owner + "'s " + vehicle_message
-                elif make is not None:
-                    vehicle_message = make
-                if notify_vehicle:
-                    if vehicles[0]["camName"] == "shed":
-                        ha.echo_speaks("Vehicle in front of garage: " + vehicle_message)
-                    else:
-                        ha.echo_speaks("Vehicle in driveway: " + vehicle_message)
-                # don't announce plate
-                if plate_name is not None:
-                    vehicle_message += " " + plate_name
-                if "vehicle" in message:
-                    message = re.sub("vehicle", vehicle_message, message)
+                if vehicle_message is not None:
+                    if vehicle_message == "":
+                        vehicle_message = "Vehicle"
+                    if notify_vehicle:
+                        if cam.name == "shed":
+                            ha.echo_speaks(f"{vehicle_message} in front of garage")
+                        else:
+                            ha.echo_speaks(f"{vehicle_message} in driveway")
+                    # don't announce plate
+                    message += "\n" + vehicle_message + " " + plate
+
         except:
-            logging.exception("Failed to enrich via sighthound")
+            logging.exception("Failed to enrich via codeproject")
 
     #    if has_package and (priority >= 0 or has_dog):
     #        prob = max(map(lambda x: x["probability"], packages))
@@ -358,27 +381,28 @@ def notify(cam, message, image, predictions, config, ha):
     #            if not has_dog:
     #                priority = -1
 
-    # prepare post
-    output_bytes = BytesIO()
-    cropped_image.save(output_bytes, "jpeg")
-    output_bytes.seek(0)
-    # send as -2 to generate no notification/alert, -1 to always send as a quiet notification, 1 to display as high-priority and bypass the user's quiet hours, or 2 to also require confirmation from the user
-    try:
-        r = requests.post(
-            "https://api.pushover.net/1/messages.json",
-            data={
-                "token": config["pushover"]["token"],
-                "user": "uzziquh6d7a4vyouise2ti482gc1pq",
-                "message": message,
-                "priority": priority,
-                "sound": sound,
-            },
-            files={"attachment": ("image.jpg", output_bytes, "image/jpeg")},
-        )
-        if r.status_code != 200:
-            logging.warning(pformat(r))
-            logging.warning(pformat(r.headers))
-    except Exception:
-        logger.exception("Failed to call Pushover")
+    if priority >= -3:
+        # prepare post
+        output_bytes = BytesIO()
+        cropped_image.save(output_bytes, "jpeg")
+        output_bytes.seek(0)
+        # send as -2 to generate no notification/alert, -1 to always send as a quiet notification, 1 to display as high-priority and bypass the user's quiet hours, or 2 to also require confirmation from the user
+        try:
+            r = requests.post(
+                "https://api.pushover.net/1/messages.json",
+                data={
+                    "token": config["pushover"]["token"],
+                    "user": "uzziquh6d7a4vyouise2ti482gc1pq",
+                    "message": message,
+                    "priority": priority,
+                    "sound": sound,
+                },
+                files={"attachment": ("image.jpg", output_bytes, "image/jpeg")},
+            )
+            if r.status_code != 200:
+                logging.warning(pformat(r))
+                logging.warning(pformat(r.headers))
+        except Exception:
+            logger.exception("Failed to call Pushover")
 
     return priority

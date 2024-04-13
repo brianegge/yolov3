@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import base64
 import json
 import os
@@ -70,7 +71,7 @@ us_state_abbrev = {
 }
 
 
-def enrich(image_bytes, save_json):
+def enrich(image_bytes, save_json=None):
     image_data = base64.b64encode(image_bytes).decode()
 
     headers = {
@@ -96,9 +97,11 @@ def enrich(image_bytes, save_json):
         )
         response = conn.getresponse()
 
+    print(response.status, response.reason)
     result = json.loads(response.read())
-    with open(save_json, "w") as f:
-        f.write(json.dumps(result, indent=4))
+    if save_json:
+        with open(save_json, "w") as f:
+            f.write(json.dumps(result, indent=4))
     message = ""
     plates = []
     for o in result["objects"]:
@@ -145,13 +148,14 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         f = sys.argv[1]
     else:
-        f = "capture/vehicles/124743-shed-person.jpg"
-    image_data = base64.b64encode(open(f, "rb").read()).decode()
+        f = "tests/175627-garage-r-person_dog_vehicle.jpg"
+    print(enrich(open(f, "rb").read()))
+    # image_data = base64.b64encode(open(f, "rb").read()).decode()
 
-    params = json.dumps({"image": image_data})
-    conn.request(
-        "POST", "/v1/recognition?objectType=vehicle,licenseplate", params, headers
-    )
-    response = conn.getresponse()
-    result = json.loads(response.read())
-    print("Detection Results = " + json.dumps(result, indent=4))
+    # params = json.dumps({"image": image_data})
+    # conn.request(
+    #    "POST", "/v1/recognition?objectType=vehicle,licenseplate", params, headers
+    # )
+    # response = conn.getresponse()
+    # result = json.loads(response.read())
+    # print("Detection Results = " + json.dumps(result, indent=4))

@@ -25,6 +25,7 @@ class HomeAssistant(object):
             if "friendly_name" in entity["attributes"]:
                 self.names[entity["attributes"]["friendly_name"]] = entity
         self.last_house_cleaners_arrived = None
+        self.cache = {}
 
     def set_scene(self, scene):
         r = requests.post(
@@ -55,9 +56,16 @@ class HomeAssistant(object):
             raise KeyError('No such device "{}"'.format(name))
 
     def get_state(self, entity):
-        response = requests.get(
-            f"{self.api}states/{entity}", headers=self.headers
-        ).json()
+        try:
+            response = requests.get(
+                f"{self.api}states/{entity}", headers=self.headers
+            ).json()
+            self.cache[entity] = response
+        except ConnectionError as e:
+            log.warning(
+                f"Failed to fetch {self.api}states/{entity}. Using cached response"
+            )
+            response = self.cache(entity)
         if "state" in response:
             return response["state"] == "on"
         log.debug(response)

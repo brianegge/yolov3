@@ -82,23 +82,35 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             if p["center"]["y"] < road_y and (
                 p["tagName"] in ["vehicle", "person", "package", "dog"]
             ):
+                if p["tagName"] == "person":
+                    p["tagName"] = "person_road"
+                if p["tagName"] == "vehicle":
+                    p["tagName"] = "vehicle_road"
+                    p["ignore"] = "road"
+    elif cam.name == "mailbox":
+        for p in predictions:
+            if p["tagName"] == "person":
+                p["tagName"] = "person_road"
+            elif p["tagName"] == "vehicle":
+                p["tagName"] = "vehicle_road"
+            elif p["tagName"] == "dog":
+                p["tagName"] = "dog_road"
+    elif cam.name == "garage-l":
+        for p in predictions:
+            if (
+                p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24
+                and (p["tagName"] in ["vehicle", "person"])
+                and p["boundingBox"]["left"] > 0.8
+            ):
+                p["ignore"] = "neighbor"
+            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24 and (
+                p["tagName"] in ["vehicle", "person"]
+            ):
                 p["ignore"] = "road"
                 if p["tagName"] == "person":
                     p["tagName"] = "person_road"
                 if p["tagName"] == "vehicle":
                     p["tagName"] = "vehicle_road"
-    elif cam.name == "mailbox":
-        for p in predictions:
-            if p["tagName"] == "person":
-                p["tagName"] = "person_road"
-            if p["tagName"] == "vehicle":
-                p["tagName"] = "vehicle_road"
-    elif cam.name == "garage-l":
-        for p in predictions:
-            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24 and (
-                p["tagName"] in ["vehicle", "person"]
-            ):
-                p["ignore"] = "neighbor"
     elif cam.name in ["front entry"]:
         for p in filter(lambda p: p["tagName"] == "package", predictions):
             if p["center"]["x"] < 0.178125:
@@ -273,7 +285,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             message = "%s in front of right garage" % ",".join(valid_objects)
         else:
             message = "%s near %s" % (",".join(valid_objects), cam.name)
-        if cam.age > 2:
+        if cam.age > 2 or "once" in config["detector"]:
             notify_start = timer()
             priority = notify(cam, message, im_pil, valid_predictions, config, ha)
             notify_time += timer() - notify_start

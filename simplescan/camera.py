@@ -61,7 +61,7 @@ class Camera:
         self.mqtt_client.loop_stop()  # disconnect gracefully
 
     def poll(self):
-        # logger.debug('polling {}'.format(self.name))
+        # logger.debug('read ftp {}'.format(self.name))
         if self.ftp_path:
             img = None
             try:
