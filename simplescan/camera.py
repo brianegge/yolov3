@@ -53,6 +53,7 @@ class Camera:
         self.session = None
         self.mqtt = set(config.get("mqtt", "").split(","))
         self.mqtt_client = paho.Client(f"aicam-{self.ha_name}")
+        self.mqtt_client.username_pw_set("mqtt", "mqtt")
         self.mqtt_client.connect("mqtt.home", 1883)
         self.mqtt_client.loop_start()
 
@@ -91,7 +92,7 @@ class Camera:
             # sudo chmod u+s /bin/fuser
             completedProc = subprocess.run(["/bin/fuser", str(f)])
             if completedProc.returncode == 0:
-                print(f"$f is open for writing")
+                print(f"{f} is open for writing")
                 return None
             img = cv2.imread(str(f))
             os.remove(f)
@@ -154,7 +155,7 @@ class Camera:
                 self.session = None
                 self.error = sys.exc_info()[0]
                 logger.exception(f"Error with {self.name}:{self.error}")
-                if self.skip > 12:
+                if self.skip > 3:
                     self.reboot()
         return self
 

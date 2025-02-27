@@ -84,6 +84,7 @@ async def main(options):
     mqtt_client.on_disconnect = on_disconnect
     mqtt_client.on_message = on_message
     mqtt_client.will_set(lwt, payload="offline", qos=0, retain=True)
+    mqtt_client.username_pw_set("mqtt", "mqtt")
     mqtt_client.connect("mqtt.home", 1883)
     mqtt_client.subscribe("test")  # get on connect messages
     mqtt_client.loop_start()

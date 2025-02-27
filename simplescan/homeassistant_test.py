@@ -37,6 +37,10 @@ def test_dark():
     assert ha.is_dark() in [True, False]
 
 
+def test_vacation():
+    assert ha.vacation_mode() in [True, False]
+
+
 def test_is_before_six():
     # Call the function and print the result
     if ha.is_time_after_midnight_and_before_six():
@@ -48,3 +52,18 @@ def test_is_before_six():
 # print("open_garage_door={}".format(st.open_garage_door()))
 # ha.deer_alert('tree line')
 # print(ha.echo_speaks("hello world"))
+
+def main():
+    print("HomeAssistant Status:")
+    print("-" * 30)
+    print(f"Notify Vehicle: {ha.should_notify_vehicle()}")
+    print(f"Notify Person: {ha.should_notify_person()}")
+    print(f"Door Left: {ha.get_door_left()}")
+    print(f"Door Right: {ha.get_door_right()}")
+    print(f"Mode: {ha.mode()}")
+    print(f"Is Dark: {ha.is_dark()}")
+    print(f"Vacation Mode: {ha.vacation_mode()}")
+    print(f"Time between midnight and 6AM: {ha.is_time_after_midnight_and_before_six()}")
+
+if __name__ == "__main__":
+    main()

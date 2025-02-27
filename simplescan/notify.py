@@ -381,7 +381,7 @@ def notify(cam, message, image, predictions, config, ha):
     #            if not has_dog:
     #                priority = -1
 
-    if priority >= -3:
+    if priority >= -3 and ha.vacation_mode() == False:
         # prepare post
         output_bytes = BytesIO()
         cropped_image.save(output_bytes, "jpeg")

@@ -112,6 +112,9 @@ class HomeAssistant(object):
     def should_notify_person(self):
         return self.get_state("input_boolean.person_detector")
 
+    def vacation_mode(self):
+        return self.get_state("input_boolean.vacation_mode")
+
     def echo_speaks(self, message):
         if self.get_presence("group.egge"):
             log.info("Speaking {}".format(message))
@@ -129,7 +132,7 @@ class HomeAssistant(object):
     def mode(self):
         if self.get_state("input_boolean.night_mode"):
             return "night"
-        elif self.get_presence("group.everyone"):
+        elif self.get_presence("group.egge"):
             return "home"
         else:
             return "away"

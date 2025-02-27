@@ -74,10 +74,13 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     if cam.name in ["driveway", "peach tree"]:
         for p in predictions:
             x = p["center"]["x"]
-            if x < 0.651:
-                road_y = 0.31 + 0.038 * x
+            if cam.name == "peach tree":
+                if x < 0.651:
+                    road_y = 0.31 + 0.038 * x
+                else:
+                    road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
             else:
-                road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
+                road_y = 0.5 * (1 - x) + 0.1 * x
             p["road_y"] = road_y
             if p["center"]["y"] < road_y and (
                 p["tagName"] in ["vehicle", "person", "package", "dog"]
@@ -212,8 +215,10 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 width = 4
             color = colors.get(p["tagName"], fallback="red")
             draw_bbox(im_pil, p, color, width=width)
-        if cam.name in ["peach tree", "driveway"]:
+        if cam.name in ["peach tree"]:
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
+        elif cam.name in ["driveway"]:
+            draw_road(im_pil, [(0, 0.5), (1.0, 0.1)])
         elif cam.name in ["garage-l"]:
             draw_road(im_pil, [(0, 0.24), (1.0, 0.24)])
     notify_expired = []

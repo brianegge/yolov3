@@ -13,9 +13,6 @@
     ],
     "person":[
       {"left": 0.20891251, "top": 0.31715739, "width": 0.0345141, "height": 0.16641355}
-    ],
-    "vehicle":[
-      {"left": 0.0, "top": 0.0, "width": 1.0, "height": 0.1, "comment": "road"}
     ]
   },
   "front entry":{
