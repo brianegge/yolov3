@@ -53,6 +53,7 @@ def test_is_before_six():
 # ha.deer_alert('tree line')
 # print(ha.echo_speaks("hello world"))
 
+
 def main():
     print("HomeAssistant Status:")
     print("-" * 30)
@@ -63,7 +64,10 @@ def main():
     print(f"Mode: {ha.mode()}")
     print(f"Is Dark: {ha.is_dark()}")
     print(f"Vacation Mode: {ha.vacation_mode()}")
-    print(f"Time between midnight and 6AM: {ha.is_time_after_midnight_and_before_six()}")
+    print(
+        f"Time between midnight and 6AM: {ha.is_time_after_midnight_and_before_six()}"
+    )
+
 
 if __name__ == "__main__":
     main()

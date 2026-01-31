@@ -1,6 +1,7 @@
 import datetime
 import logging
 from pprint import pprint
+from typing import Any, Dict, Optional
 from urllib.parse import quote, urljoin
 
 import requests
@@ -8,38 +9,40 @@ import requests
 log = logging.getLogger(__name__)
 
 
-class HomeAssistant(object):
+class HomeAssistant:
     """interface with HomeAssistant"""
 
-    def __init__(self, config):
-        self.config = config
-        self.headers = {"Authorization": "Bearer {}".format(self.config["token"])}
-        self.api = "http://homeassistant.home:8123/api/"
-        response = requests.get(self.api, headers=self.headers)
-        message = response.json()["message"]
+    def __init__(self, config: Dict[str, Any]) -> None:
+        self.config: Dict[str, Any] = config
+        self.headers: Dict[str, str] = {
+            "Authorization": f"Bearer {self.config['token']}"
+        }
+        self.api: str = "http://homeassistant.home:8123/api/"
+        response: requests.Response = requests.get(self.api, headers=self.headers)
+        message: str = response.json()["message"]
         log.debug(f"Home Assistant {message}")
         assert message == "API running."
-        self.names = {}
+        self.names: Dict[str, Any] = {}
         response = requests.get(urljoin(self.api, "states"), headers=self.headers)
         for entity in response.json():
             if "friendly_name" in entity["attributes"]:
                 self.names[entity["attributes"]["friendly_name"]] = entity
-        self.last_house_cleaners_arrived = None
-        self.cache = {}
+        self.last_house_cleaners_arrived: Optional[datetime.datetime] = None
+        self.cache: Dict[str, Any] = {}
 
-    def set_scene(self, scene):
+    def set_scene(self, scene: str) -> requests.Response:
         r = requests.post(
             f"{self.api}services/scene/turn_on",
             json={"entity_id": f"scene.{scene}"},
             headers=self.headers,
         )
         log.info(f"Turned on scene {scene}={r}")
+        return r
 
-    def open_garage_door(self):
+    def open_garage_door(self) -> None:
         raise NotImplementedError
 
-    def deer_alert(self, location):
-        # invoke webcore piston
+    def deer_alert(self, location: str) -> None:
         json = {
             "entity_id": "script.deer",
             "variables": {"location": location},
@@ -49,13 +52,13 @@ class HomeAssistant(object):
         )
         log.info(f"Deer alert={r}")
 
-    def get_device(self, name):
+    def get_device(self, name: str) -> Any:
         try:
             return self.devices[name.lower()]
         except KeyError:
             raise KeyError('No such device "{}"'.format(name))
 
-    def get_state(self, entity):
+    def get_state(self, entity: str) -> bool:
         try:
             response = requests.get(
                 f"{self.api}states/{entity}", headers=self.headers
@@ -71,7 +74,7 @@ class HomeAssistant(object):
         log.debug(response)
         raise RuntimeError(f"Invalid response from entity {entity}={response}")
 
-    def set_input_boolean(self, switch, state):
+    def set_input_boolean(self, switch: str, state: bool) -> requests.Response:
         json = {
             "entity_id": switch,
         }
@@ -91,31 +94,31 @@ class HomeAssistant(object):
             log.warning(f"Set input_boolean {switch} to {state}={response.content}")
         return response
 
-    def set_notify_vehicle(self, state):
+    def set_notify_vehicle(self, state: bool) -> requests.Response:
         return self.set_input_boolean("input_boolean.vehicle_detector", state)
 
-    def get_door_left(self):
+    def get_door_left(self) -> bool:
         return self.get_state("binary_sensor.konnected_198e05_zone_4")
 
-    def get_door_right(self):
+    def get_door_right(self) -> bool:
         return self.get_state("binary_sensor.konnected_198e05_zone_5")
 
-    def get_presence(self, person):
+    def get_presence(self, person: str) -> bool:
         response = requests.get(
             f"{self.api}states/{person}", headers=self.headers
         ).json()
         return response["state"] == "home"
 
-    def should_notify_vehicle(self):
+    def should_notify_vehicle(self) -> bool:
         return self.get_state("input_boolean.vehicle_detector")
 
-    def should_notify_person(self):
+    def should_notify_person(self) -> bool:
         return self.get_state("input_boolean.person_detector")
 
-    def vacation_mode(self):
+    def vacation_mode(self) -> bool:
         return self.get_state("input_boolean.vacation_mode")
 
-    def echo_speaks(self, message):
+    def echo_speaks(self, message: str) -> Any:
         if self.get_presence("group.egge"):
             log.info("Speaking {}".format(message))
             json = {"message": message, "data": {"type": "tts"}}
@@ -129,7 +132,7 @@ class HomeAssistant(object):
             log.info("Not speaking {}".format(message))
             return True
 
-    def mode(self):
+    def mode(self) -> str:
         if self.get_state("input_boolean.night_mode"):
             return "night"
         elif self.get_presence("group.egge"):
@@ -137,10 +140,10 @@ class HomeAssistant(object):
         else:
             return "away"
 
-    def is_dark(self):
+    def is_dark(self) -> bool:
         return self.get_state("binary_sensor.is_dark")
 
-    def is_time_after_midnight_and_before_six(self):
+    def is_time_after_midnight_and_before_six(self) -> bool:
         current_time = datetime.datetime.now().time()
         midnight = datetime.time(0, 0)
         six_am = datetime.time(6, 0)
@@ -150,7 +153,7 @@ class HomeAssistant(object):
         else:
             return False
 
-    def suppress_notify_person(self):
+    def suppress_notify_person(self) -> str:
         log.debug("Keep person notify suppressed")
         r = requests.post(
             f"{self.api}services/script/turn_on",
@@ -159,7 +162,7 @@ class HomeAssistant(object):
         )
         return r.content.decode("utf-8")
 
-    def house_cleaners_arrived(self):
+    def house_cleaners_arrived(self) -> None:
         if (
             self.last_house_cleaners_arrived is None
             or datetime.datetime.now() - self.last_house_cleaners_arrived

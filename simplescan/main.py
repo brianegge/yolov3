@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-# The steps implemented in the object detection sample code:
-# 1. for an image of width and height being (w, h) pixels, resize image to (w', h'), where w/h = w'/h' and w' x h' = 262144
-# 2. resize network input size to (w', h')
-# 3. pass the image to network and do inference
-# (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
-# scale is a multiplier of the default model size
 import argparse
 import asyncio
 import concurrent.futures
@@ -15,11 +9,12 @@ import logging
 import os
 import pathlib
 import signal
-import subprocess
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from timeit import default_timer as timer
+from typing import Any, Dict, List, Optional
 
 import paho.mqtt.client as paho
 import requests
@@ -30,54 +25,54 @@ from detect import detect
 from homeassistant import HomeAssistant
 from object_detection_rt import ONNXTensorRTObjectDetection
 from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
-from onnx_object_detection import ONNXRuntimeObjectDetection
 from utils import cleanup
 
-log = logging.getLogger("aicam")
-mlog = logging.getLogger("mqtt")
-kill_now = False
+log: logging.Logger = logging.getLogger("aicam")
+mlog: logging.Logger = logging.getLogger("mqtt")
+kill_now: bool = False
 
 
-def on_publish(client, userdata, mid):
+def on_publish(client: paho.Client, userdata: Any, mid: int) -> None:
     mlog.debug("on_publish({},{})".format(userdata, mid))
 
 
-# The callback for when the client receives a CONNACK response from the server.
-def on_connect(client, userdata, flags, rc):
+def on_connect(client: paho.Client, userdata: Any, flags: Dict, rc: int) -> None:
     mlog.info("mqtt connected")
     client.publish("aicam/status", "online", retain=True)
 
 
-def on_disconnect(client, userdata, rc):
+def on_disconnect(client: paho.Client, userdata: Any, rc: int) -> None:
     mlog.info("mqtt disconnected reason  " + str(rc))
     global kill_now
     kill_now = True
 
 
-def on_message(self, mqtt_client, obj, msg):
+def on_message(
+    self: Any, mqtt_client: paho.Client, obj: Any, msg: paho.MQTTMessage
+) -> None:
     mlog.info("on_message()")
 
 
 class GracefulKiller:
-    def __init__(self):
+    def __init__(self) -> None:
         signal.signal(signal.SIGINT, self.exit_gracefully)
         signal.signal(signal.SIGTERM, self.exit_gracefully)
 
-    def exit_gracefully(self, *args):
+    def exit_gracefully(self, *args: Any) -> None:
         global kill_now
         kill_now = True
 
 
-async def main(options):
-    config = configparser.ConfigParser()
+async def main(options: argparse.Namespace) -> None:
+    config: configparser.ConfigParser = configparser.ConfigParser()
     config.read(options.config_file)
-    ha = HomeAssistant(config["homeassistant"])
-    detector_config = config["detector"]
-    color_model_config = config["color-model"]
-    grey_model_config = config["grey-model"]
-    mqtt_icons = config["mqtt_icons"]
-    lwt = "aicam/status"
-    mqtt_client = paho.Client(client_id="aicam")
+    ha: HomeAssistant = HomeAssistant(config["homeassistant"])
+    detector_config: Dict[str, str] = config["detector"]
+    color_model_config: Dict[str, str] = config["color-model"]
+    grey_model_config: Dict[str, str] = config["grey-model"]
+    mqtt_icons: Dict[str, str] = config["mqtt_icons"]
+    lwt: str = "aicam/status"
+    mqtt_client: paho.Client = paho.Client(client_id="aicam")
     mqtt_client.enable_logger(logger=mlog)
     mqtt_client.on_publish = on_publish
     mqtt_client.on_connect = on_connect

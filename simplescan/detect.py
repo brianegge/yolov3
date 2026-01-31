@@ -54,6 +54,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     vehicle_predictions = []
     if cam.vehicle_check and vehicle_model is not None:
         vehicle_predictions = vehicle_model.predict_image(cam.resized2)
+        print(f"\n{cam.name} vehicles={vehicle_predictions}")
         # include all vehicle predictions for now
         predictions += vehicle_predictions
     prediction_time = timer() - prediction_start
@@ -80,13 +81,15 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 else:
                     road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
             else:
-                road_y = 0.5 * (1 - x) + 0.1 * x
+                road_y = 0.5 * (1 - x) + 0.2 * x
             p["road_y"] = road_y
             if p["center"]["y"] < road_y and (
                 p["tagName"] in ["vehicle", "person", "package", "dog"]
             ):
                 if p["tagName"] == "person":
                     p["tagName"] = "person_road"
+                if p["tagName"] == "dog":
+                    p["tagName"] = "dog_road"
                 if p["tagName"] == "vehicle":
                     p["tagName"] = "vehicle_road"
                     p["ignore"] = "road"
@@ -218,7 +221,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         if cam.name in ["peach tree"]:
             draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
         elif cam.name in ["driveway"]:
-            draw_road(im_pil, [(0, 0.5), (1.0, 0.1)])
+            draw_road(im_pil, [(0, 0.5), (1.0, 0.2)])
         elif cam.name in ["garage-l"]:
             draw_road(im_pil, [(0, 0.24), (1.0, 0.24)])
     notify_expired = []
