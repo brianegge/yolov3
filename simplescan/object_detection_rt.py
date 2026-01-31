@@ -1,12 +1,10 @@
 import math
 import os
-import tempfile
-from pprint import pprint
 
+import cv2
 import numpy as np
-import onnx
-import onnxruntime
-import pycuda.autoinit
+import pycuda.autoinit  # noqa: F401 - required for CUDA initialization
+from PIL import Image
 import pycuda.driver as cuda
 import tensorrt as trt
 

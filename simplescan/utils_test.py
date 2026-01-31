@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from PIL import ImageColor, ImageDraw, ImageFont
+from PIL import ImageColor
 
 
 def test_colors():

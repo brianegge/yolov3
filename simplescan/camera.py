@@ -3,21 +3,14 @@ import logging
 import os
 import subprocess
 import sys
-import time
-import traceback
-from datetime import date, datetime, timedelta
-from io import BytesIO, StringIO
+from datetime import datetime, timedelta
 from pathlib import Path
-from pprint import pformat
-from timeit import default_timer as timer
 from urllib.parse import urlparse
 
 import cv2
-import humanize
 import numpy as np
 import paho.mqtt.client as paho
 import requests
-from PIL import Image, UnidentifiedImageError
 from requests.auth import HTTPDigestAuth
 
 from utils import cleanup
@@ -124,7 +117,7 @@ class Camera:
             self.source = self.config["file"]
             self.resize()
         else:
-            if self.session == None:
+            if self.session is None:
                 self.session = requests.Session()
                 if "user" in self.config:
                     self.session.auth = HTTPDigestAuth(
@@ -145,7 +138,7 @@ class Camera:
                     self.resize()
                     self.error = None
                     self.fails = 0
-            except Exception as e:
+            except Exception:
                 self.image = None
                 self.image_hash = 0
                 self.source = None
@@ -172,7 +165,7 @@ class Camera:
                 url, auth=HTTPDigestAuth(self.config["user"], self.config["password"])
             )
             r.raise_for_status()
-        except:
+        except Exception:
             logger.exception("Failed to reboot %s", self.name)
 
     def resize(self):

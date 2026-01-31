@@ -1,8 +1,7 @@
 import datetime
 import logging
-from pprint import pprint
 from typing import Any, Dict, Optional
-from urllib.parse import quote, urljoin
+from urllib.parse import urljoin
 
 import requests
 
@@ -64,7 +63,7 @@ class HomeAssistant:
                 f"{self.api}states/{entity}", headers=self.headers
             ).json()
             self.cache[entity] = response
-        except ConnectionError as e:
+        except ConnectionError:
             log.warning(
                 f"Failed to fetch {self.api}states/{entity}. Using cached response"
             )

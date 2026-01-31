@@ -23,7 +23,7 @@ args = parser.parse_args()
 model_dir = "/Users/brianegge/downloads/5229026c5d694c2292f9f326d4b49620.ONNX/"
 # Load labels
 with open(model_dir + "labels.txt", "r") as f:
-    labels = [l.strip() for l in f.readlines()]
+    labels = [line.strip() for line in f.readlines()]
 od_model = ONNXRuntimeObjectDetection(model_dir + "model.onnx", labels)
 
 fps = 15
@@ -43,8 +43,8 @@ colors = {
     "raccoon": "brown",
     "deer": "chartreuse",
 }
-for l in labels:
-    colors.setdefault(l, ColorHash(l).hex)
+for label in labels:
+    colors.setdefault(label, ColorHash(label).hex)
 
 frame_count = 0
 for path_video in args.input:

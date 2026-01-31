@@ -1,5 +1,4 @@
 import datetime
-from pprint import pprint
 from urllib.parse import quote
 
 import requests

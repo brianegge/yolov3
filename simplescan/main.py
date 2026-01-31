@@ -11,10 +11,9 @@ import pathlib
 import signal
 import sys
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from timeit import default_timer as timer
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import paho.mqtt.client as paho
 import requests
@@ -23,7 +22,6 @@ import sdnotify
 from camera import Camera
 from detect import detect
 from homeassistant import HomeAssistant
-from object_detection_rt import ONNXTensorRTObjectDetection
 from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
 from utils import cleanup
 
@@ -86,10 +84,10 @@ async def main(options: argparse.Namespace) -> None:
 
     # Load labels
     with open(detector_config["labelfile-path"], "r") as f:
-        labels = [l.strip() for l in f.readlines()]
+        labels = [line.strip() for line in f.readlines()]
     if "vehicle-labelfile-path" in detector_config:
         with open(detector_config["vehicle-labelfile-path"], "r") as f:
-            vehicle_labels = [l.strip() for l in f.readlines()]
+            vehicle_labels = [line.strip() for line in f.readlines()]
     # open static exclusion
     excludes = {}
     if "excludes-file" in detector_config:
@@ -166,7 +164,7 @@ async def main(options: argparse.Namespace) -> None:
     sd.notify("READY=1")
     sd.notify("STATUS=Running")
     cleanup_time = datetime(1970, 1, 1, 0, 0, 0)
-    killer = GracefulKiller()
+    GracefulKiller()
     global kill_now
     while not kill_now:
         sd.notify("WATCHDOG=1")

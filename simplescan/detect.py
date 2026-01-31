@@ -1,27 +1,18 @@
-import hashlib
 import json
 import logging
 import os
 import sys
 import time
-import traceback
 from datetime import date, datetime, timedelta
-from io import BytesIO, StringIO
-from pathlib import Path
 from pprint import pformat
 from timeit import default_timer as timer
-from urllib.parse import urlparse
 
 import cv2
 import humanize
-import numpy as np
-import requests
-from PIL import Image, UnidentifiedImageError
-from requests.auth import HTTPDigestAuth
+from PIL import Image
 
 from notify import notify
-from object_detection import ObjectDetection
-from utils import bb_intersection_over_union, cleanup, draw_bbox, draw_road
+from utils import bb_intersection_over_union, draw_bbox, draw_road
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +39,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             predictions = grey_model.predict_image(cam.resized)
         else:
             return 0, "Unknown image shape {}".format(cam.resized.shape)
-    except OSError as e:
+    except OSError:
         return 0, "{}=error:{}".format(cam.name, sys.exc_info()[0])
     cam.age = cam.age + 1
     vehicle_predictions = []
@@ -191,7 +182,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 for t in ["age", "ignore", "priority", "priority_type"]:
                     if t in prev:
                         p[t] = prev[t]
-        if not "iou" in p:
+        if "iou" not in p:
             p["start_time"] = datetime.now()
             p["last_time"] = datetime.now()
             p["age"] = 0

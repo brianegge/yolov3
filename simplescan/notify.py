@@ -1,14 +1,10 @@
 import json
 import logging
 import os
-import re
-import sys
-import traceback
 from datetime import date, datetime
 from io import BytesIO
 from pprint import pformat
 
-import aiohttp
 import requests
 
 import codeproject
@@ -44,18 +40,17 @@ def notify(cam, message, image, predictions, config, ha):
         mode_priorities = {}
     priorities = config["priority"]
     priority = None
-    priority_type = None
     has_dog = False
     vehicles = list(
-        filter(lambda p: p["tagName"] == "vehicle" and not "ignore" in p, predictions)
+        filter(lambda p: p["tagName"] == "vehicle" and "ignore" not in p, predictions)
     )
     has_vehicles = len(vehicles) > 0
     has_visible_vehicles = len(
         list(
             filter(
                 lambda p: p["tagName"] == "vehicle"
-                and not "ignore" in p
-                and not "departed" in p
+                and "ignore" not in p
+                and "departed" not in p
                 and p["age"] == 0,
                 predictions,
             )
@@ -63,7 +58,7 @@ def notify(cam, message, image, predictions, config, ha):
     )
     people = list(
         filter(
-            lambda p: p["tagName"] == "person" and not "ignore" in p,
+            lambda p: p["tagName"] == "person" and "ignore" not in p,
             predictions,
         )
     )
@@ -72,11 +67,9 @@ def notify(cam, message, image, predictions, config, ha):
     has_person_road = (
         len(list(filter(lambda p: p["tagName"] == "person_road", predictions))) > 0
     )
-    has_dog_road = (
-        len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
-    )
+    len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
     packages = list(
-        filter(lambda p: p["tagName"] == "package" and not "departed" in p, predictions)
+        filter(lambda p: p["tagName"] == "package" and "departed" not in p, predictions)
     )
     has_package = len(packages) > 0
     if has_vehicles and cam.name != "mailbox":
@@ -111,7 +104,7 @@ def notify(cam, message, image, predictions, config, ha):
     sound = "pushover"
     for p in list(filter(lambda p: "ignore" in p or "iou" in p, predictions)):
         p["priority"] = -4
-    for p in list(filter(lambda p: not "priority" in p, predictions)):
+    for p in list(filter(lambda p: "priority" not in p, predictions)):
         tagName = p["tagName"]
         probability = p["probability"]
         i_type = None
@@ -189,24 +182,18 @@ def notify(cam, message, image, predictions, config, ha):
             p["priority_type"] = i_type
             if priority is None:
                 priority = i
-                priority_type = i_type
             else:
                 priority = max(i, priority)
-                if i >= priority:
-                    priority_type = i_type
     # raise priority if dog is near package
     if has_package and has_dog:
         priority = 1
-        priority_rule = "dog near package"
     if priority is None:
         for p in predictions:
             if "priority" in p:
                 priority = p["priority"]
-                prior_rule = "prior_priority"
                 logging.info(f"Using prior priority={priority}")
     if priority is None:
         priority = 0
-        priority_rule = "default"
         logging.info("Using default priority")
 
     # crop to area of interest
@@ -300,8 +287,6 @@ def notify(cam, message, image, predictions, config, ha):
                 + "codeproject.txt",
             )
             enrichments = codeproject.enrich(vehicle_bytes.read(), save_json)
-            make = None
-            plate_name = None
             vehicle_message = ""
             if enrichments["count"] == 0:
                 # Don't announce if sighthound can't find a vehicle
@@ -330,10 +315,10 @@ def notify(cam, message, image, predictions, config, ha):
                                 vehicle_message += r["model"]
                         else:
                             vehicle_message += "vehicle"
-                        if r.get("announce", True) == False:
+                        if r.get("announce", True) is False:
                             logging.info(
                                 "Ignoring {}'s vehicle with plate {}".format(
-                                    owner, plate
+                                    r["owner"], plate
                                 )
                             )
                             vehicle_message = None
@@ -349,7 +334,7 @@ def notify(cam, message, image, predictions, config, ha):
                     # don't announce plate
                     message += "\n" + vehicle_message + " " + plate
 
-        except:
+        except Exception:
             logging.exception("Failed to enrich via codeproject")
 
     #    if has_package and (priority >= 0 or has_dog):
@@ -381,7 +366,7 @@ def notify(cam, message, image, predictions, config, ha):
     #            if not has_dog:
     #                priority = -1
 
-    if priority >= -3 and ha.vacation_mode() == False:
+    if priority >= -3 and ha.vacation_mode() is False:
         # prepare post
         output_bytes = BytesIO()
         cropped_image.save(output_bytes, "jpeg")

@@ -49,10 +49,8 @@
 
 import argparse
 import os
-from itertools import chain
 
 # import pycuda.autoinit
-import numpy as np
 import pycuda.driver as cuda
 import tensorrt as trt
 

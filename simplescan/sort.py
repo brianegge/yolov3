@@ -17,11 +17,6 @@
 """
 from __future__ import print_function
 
-import argparse
-import glob
-import os
-import time
-
 import numpy as np
 from filterpy.kalman import KalmanFilter
 
@@ -85,7 +80,7 @@ def convert_x_to_bbox(x, score=None):
     """
     w = np.sqrt(x[2] * x[3])
     h = x[2] / w
-    if score == None:
+    if score is None:
         return np.array(
             [x[0] - w / 2.0, x[1] - h / 2.0, x[0] + w / 2.0, x[1] + h / 2.0]
         ).reshape((1, 4))

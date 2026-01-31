@@ -4,8 +4,6 @@
 # 3. pass the image to network and do inference
 # (4. if inference speed is too slow for you, try to make w' x h' smaller, which is defined with DEFAULT_INPUT_SIZE (in object_detection.py or ObjectDetection.cs))
 import math
-import time
-from pprint import pprint
 
 import numpy as np
 
@@ -144,12 +142,8 @@ class ObjectDetection(object):
         return (boxes, class_probs)
 
     def predict_image(self, image):
-        start = time.time()
         inputs = self.preprocess(image)
-        # print("Preprocess={}".format(time.time() - start))
-        start = time.time()
         prediction_outputs = self.predict(inputs)
-        # print("Predict={}".format(time.time() - start))
         return self.postprocess(prediction_outputs)
 
     def preprocess(self, image):

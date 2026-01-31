@@ -3,30 +3,33 @@ import configparser
 
 from homeassistant import HomeAssistant
 
+
 config = configparser.ConfigParser()
 config.read("config.txt")
 
 ha = HomeAssistant(config["homeassistant"])
+
+
 # ha.set_scene("reading")
 def test_should_notify_vehicle():
     orig = ha.should_notify_vehicle()
     assert type(orig) == bool
     ha.set_notify_vehicle(False)
-    assert ha.should_notify_vehicle() == False
+    assert ha.should_notify_vehicle() is False
     ha.set_notify_vehicle(True)
-    assert ha.should_notify_vehicle() == True
+    assert ha.should_notify_vehicle() is True
     ha.set_notify_vehicle(orig)
 
 
 def test_should_notify_person():
     assert type(ha.should_notify_person()) == bool
     ha.suppress_notify_person()
-    assert ha.should_notify_person() == False
+    assert ha.should_notify_person() is False
 
 
 def test_door_contacts():
-    door_left = ha.get_door_left()
-    door_right = ha.get_door_right()
+    assert ha.get_door_left() is not None
+    assert ha.get_door_right() is not None
 
 
 def test_mode():

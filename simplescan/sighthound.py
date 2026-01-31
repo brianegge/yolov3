@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 import base64
 import json
-import os
 import ssl
 import sys
 
 try:
     import httplib  # Python 2
-except:
+except ImportError:
     import http.client as httplib  # Python 3
 
 
@@ -87,7 +86,7 @@ def enrich(image_bytes, save_json=None):
             "POST", "/v1/recognition?objectType=vehicle,licenseplate", params, headers
         )
         response = conn.getresponse()
-    except:
+    except Exception:
         print("retrying sightound")
         conn = httplib.HTTPSConnection(
             "dev.sighthoundapi.com", context=ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)

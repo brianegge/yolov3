@@ -1,15 +1,8 @@
 import logging
-import math
 import os
-import tempfile
-import time
-from timeit import default_timer as timer
 
-import cv2
 import numpy as np
-import onnx
-import onnxruntime
-import pycuda.autoinit
+import pycuda.autoinit  # noqa: F401 - required for CUDA initialization
 import pycuda.driver as cuda
 import tensorrt as trt
 from PIL import Image
@@ -122,13 +115,12 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             if image.size != (self.model_width, self.model_height):
                 logger.debug(
                     "Resizing from {} to {}".format(
-                        pil_image.size, (self.model_width, self.model_height)
+                        image.size, (self.model_width, self.model_height)
                     )
                 )
                 image = image.resize(
                     (self.model_width, self.model_height), Image.BILINEAR
                 )
-                raise
         img_in = np.array(image)
         if self.channels == 3:
             # channels first
@@ -217,8 +209,6 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         # [batch, num, num_classes]
         confs = output[1]
 
-        t1 = time.time()
-
         if type(box_array).__name__ != "ndarray":
             box_array = box_array.cpu().detach().numpy()
             confs = confs.cpu().detach().numpy()
@@ -231,8 +221,6 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         # [batch, num, num_classes] --> [batch, num]
         max_conf = np.max(confs, axis=2)
         max_id = np.argmax(confs, axis=2)
-
-        t2 = time.time()
 
         bboxes_batch = []
         for i in range(box_array.shape[0]):
@@ -272,8 +260,6 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                         )
 
             bboxes_batch.append(bboxes)
-
-        t3 = time.time()
 
         assert (
             len(bboxes_batch) == 1

@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from PIL import ImageColor, ImageDraw, ImageFont
@@ -87,7 +86,7 @@ def cleanup(directory_name, children_only=True):
                 log.debug("Not removing image {}".format(item))
             else:
                 item.unlink()
-        if next(directory.iterdir(), None) is None and children_only == False:
+        if next(directory.iterdir(), None) is None and children_only is False:
             directory.rmdir()
     except OSError:
         # new files may be created during cleanup
