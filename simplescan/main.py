@@ -79,7 +79,11 @@ async def main(options: argparse.Namespace) -> None:
     mqtt_client.will_set(lwt, payload="offline", qos=0, retain=True)
     mqtt_config = config["mqtt"]
     mqtt_client.username_pw_set(mqtt_config["user"], mqtt_config["password"])
-    mqtt_client.connect(mqtt_config["host"], mqtt_config.getint("port", 1883))
+    try:
+        mqtt_client.connect(mqtt_config["host"], mqtt_config.getint("port", 1883), keepalive=60)
+    except Exception as e:
+        log.error(f"Failed to connect to MQTT broker: {e}")
+        raise
     mqtt_client.subscribe("test")  # get on connect messages
     mqtt_client.loop_start()
 
@@ -203,6 +207,8 @@ async def main(options: argparse.Namespace) -> None:
                     count += 1
             except KeyboardInterrupt:
                 return
+            except Exception:
+                log.exception("Error in detection pipeline")
 
         if count == 0:
             # scan each camera
@@ -240,6 +246,8 @@ async def main(options: argparse.Namespace) -> None:
                         messages.append(m)
                 except KeyboardInterrupt:
                     return
+                except Exception:
+                    log.exception("Error in detection pipeline")
         else:
             log_line = "Reading "
 

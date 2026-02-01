@@ -17,15 +17,22 @@ class HomeAssistant:
             "Authorization": f"Bearer {self.config['token']}"
         }
         self.api: str = self.config.get("api", "http://homeassistant.home:8123/api/")
-        response: requests.Response = requests.get(self.api, headers=self.headers)
-        message: str = response.json()["message"]
-        log.debug(f"Home Assistant {message}")
-        assert message == "API running."
+        try:
+            response: requests.Response = requests.get(self.api, headers=self.headers, timeout=10)
+            message: str = response.json().get("message", "")
+            log.debug(f"Home Assistant {message}")
+            if message != "API running.":
+                log.warning(f"Unexpected HA response: {message}")
+        except (requests.exceptions.RequestException, KeyError, ValueError) as e:
+            log.warning(f"Failed to connect to Home Assistant: {e}")
         self.names: Dict[str, Any] = {}
-        response = requests.get(urljoin(self.api, "states"), headers=self.headers)
-        for entity in response.json():
-            if "friendly_name" in entity["attributes"]:
-                self.names[entity["attributes"]["friendly_name"]] = entity
+        try:
+            response = requests.get(urljoin(self.api, "states"), headers=self.headers, timeout=10)
+            for entity in response.json():
+                if "friendly_name" in entity["attributes"]:
+                    self.names[entity["attributes"]["friendly_name"]] = entity
+        except (requests.exceptions.RequestException, KeyError, ValueError) as e:
+            log.warning(f"Failed to load HA states: {e}")
         self.last_house_cleaners_arrived: Optional[datetime.datetime] = None
         self.cache: Dict[str, Any] = {}
 

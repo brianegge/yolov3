@@ -31,6 +31,8 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     image = cam.image
     if image is None:
         return 0, 0, "{}=[err={}]".format(cam.name, cam.error)
+    if cam.resized is None:
+        return 0, 0, "{}=[err=resized is None]".format(cam.name)
     prediction_start = timer()
     try:
         if len(cam.resized.shape) == 3:
@@ -134,11 +136,15 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     save_dir = os.path.join(config["detector"]["save-path"], yyyymmdd)
     os.makedirs(save_dir, exist_ok=True)
     today_dir = os.path.join(config["detector"]["save-path"], "today")
-    if not os.path.exists(today_dir):
+    try:
         os.symlink(yyyymmdd, today_dir)
-    if os.readlink(today_dir) != yyyymmdd:
-        os.unlink(today_dir)
-        os.symlink(yyyymmdd, today_dir)
+    except FileExistsError:
+        try:
+            if os.readlink(today_dir) != yyyymmdd:
+                os.unlink(today_dir)
+                os.symlink(yyyymmdd, today_dir)
+        except OSError as e:
+            logger.warning(f"Failed to update today symlink: {e}")
 
     if len(departed_objects) > 0 and cam.prior_priority > -3:
         logger.info(

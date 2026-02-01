@@ -11,8 +11,19 @@ import codeproject
 
 logger = logging.getLogger(__name__)
 
-with open("license-plates.json") as f:
-    license_plates = json.load(f)
+license_plates = {}
+
+
+def _load_license_plates():
+    global license_plates
+    if not license_plates:
+        try:
+            with open("license-plates.json") as f:
+                license_plates = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not load license-plates.json: {e}")
+            license_plates = {}
+    return license_plates
 
 
 def edits1(word):
@@ -246,7 +257,7 @@ def notify(cam, message, image, predictions, config, ha):
         return priority
     # else:
     #    logging.info('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
-    if has_visible_vehicles:
+    if has_visible_vehicles and len(vehicles) > 0:
         logging.info(pformat(vehicles))
         left = max(0, min(p["boundingBox"]["left"] - 0.05 for p in vehicles) * width)
         right = min(
@@ -297,6 +308,8 @@ def notify(cam, message, image, predictions, config, ha):
             if enrichments["count"] == 0:
                 # Don't announce if ALPR can't find a vehicle
                 notify_vehicle = False
+            plates_db = _load_license_plates()
+            house_cleaner_found = False
             for plate in enrichments["plates"]:
                 guesses = (
                     [plate]
@@ -305,14 +318,14 @@ def notify(cam, message, image, predictions, config, ha):
                     + list(edits2(plate))
                 )
                 for guess in guesses:
-                    if guess in license_plates:
+                    if guess in plates_db:
                         if len(vehicle_message) > 0:
                             vehicle_message += " and "
-                        r = license_plates[guess]
+                        r = plates_db[guess]
                         if "owner" in r:
                             vehicle_message += r["owner"] + "'s "
                             if r["owner"].lower() == "house cleaner":
-                                ha.house_cleaners_arrived()
+                                house_cleaner_found = True
                         if "color" in r:
                             vehicle_message += r["color"] + " "
                         if "make" in r:
@@ -339,6 +352,8 @@ def notify(cam, message, image, predictions, config, ha):
                             ha.echo_speaks(f"{vehicle_message} in driveway")
                     # don't announce plate
                     message += "\n" + vehicle_message + " " + plate
+            if house_cleaner_found:
+                ha.house_cleaners_arrived()
 
         except Exception:
             logging.exception("Failed to enrich via codeproject")

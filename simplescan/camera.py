@@ -115,7 +115,8 @@ class Camera:
             self.is_file = True
             self.image = cv2.imread(self.config["file"])
             self.source = self.config["file"]
-            self.resize()
+            if self.image is not None:
+                self.resize()
         else:
             if self.session is None:
                 self.session = requests.Session()
@@ -169,6 +170,8 @@ class Camera:
             logger.exception("Failed to reboot %s", self.name)
 
     def resize(self):
+        if self.image is None:
+            return
         hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
         sum = np.sum(hsv[:, :, 0])
         if sum == 0:
