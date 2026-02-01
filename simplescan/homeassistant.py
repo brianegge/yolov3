@@ -16,7 +16,7 @@ class HomeAssistant:
         self.headers: Dict[str, str] = {
             "Authorization": f"Bearer {self.config['token']}"
         }
-        self.api: str = "http://homeassistant.home:8123/api/"
+        self.api: str = self.config.get("api", "http://homeassistant.home:8123/api/")
         response: requests.Response = requests.get(self.api, headers=self.headers)
         message: str = response.json()["message"]
         log.debug(f"Home Assistant {message}")
@@ -63,11 +63,11 @@ class HomeAssistant:
                 f"{self.api}states/{entity}", headers=self.headers
             ).json()
             self.cache[entity] = response
-        except ConnectionError:
+        except requests.exceptions.ConnectionError:
             log.warning(
                 f"Failed to fetch {self.api}states/{entity}. Using cached response"
             )
-            response = self.cache(entity)
+            response = self.cache[entity]
         if "state" in response:
             return response["state"] == "on"
         log.debug(response)

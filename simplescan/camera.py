@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class Camera:
-    def __init__(self, config, excludes):
+    def __init__(self, config, excludes, mqtt_config):
         self.name = config["name"]
         self.ha_name = self.name.replace(" ", "_")
         self.config = config
@@ -46,8 +46,8 @@ class Camera:
         self.session = None
         self.mqtt = set(config.get("mqtt", "").split(","))
         self.mqtt_client = paho.Client(f"aicam-{self.ha_name}")
-        self.mqtt_client.username_pw_set("mqtt", "mqtt")
-        self.mqtt_client.connect("mqtt.home", 1883)
+        self.mqtt_client.username_pw_set(mqtt_config["user"], mqtt_config["password"])
+        self.mqtt_client.connect(mqtt_config["host"], mqtt_config.getint("port", 1883))
         self.mqtt_client.loop_start()
 
     def __del__(self):
@@ -90,7 +90,7 @@ class Camera:
             img = cv2.imread(str(f))
             os.remove(f)
             if img is not None and len(img) > 0:
-                h = hashlib.md5(img.view(np.uint8)).hexdigest()
+                h = hashlib.md5(img.tobytes()).hexdigest()
                 if self.image_hash == h:
                     self.error = "dup"
                     return None
@@ -133,7 +133,7 @@ class Camera:
                         self.error = "empty"
                         return self
                     self.image = cv2.imdecode(bytes, cv2.IMREAD_UNCHANGED)
-                    self.image_hash = hashlib.md5(self.image.view(np.uint8)).hexdigest()
+                    self.image_hash = hashlib.md5(self.image.tobytes()).hexdigest()
                     self.source = self.config["uri"]
                     self.resize()
                     self.error = None

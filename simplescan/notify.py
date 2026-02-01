@@ -377,7 +377,7 @@ def notify(cam, message, image, predictions, config, ha):
                 "https://api.pushover.net/1/messages.json",
                 data={
                     "token": config["pushover"]["token"],
-                    "user": "uzziquh6d7a4vyouise2ti482gc1pq",
+                    "user": config["pushover"]["user"],
                     "message": message,
                     "priority": priority,
                     "sound": sound,

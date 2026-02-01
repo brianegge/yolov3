@@ -77,8 +77,9 @@ async def main(options: argparse.Namespace) -> None:
     mqtt_client.on_disconnect = on_disconnect
     mqtt_client.on_message = on_message
     mqtt_client.will_set(lwt, payload="offline", qos=0, retain=True)
-    mqtt_client.username_pw_set("mqtt", "mqtt")
-    mqtt_client.connect("mqtt.home", 1883)
+    mqtt_config = config["mqtt"]
+    mqtt_client.username_pw_set(mqtt_config["user"], mqtt_config["password"])
+    mqtt_client.connect(mqtt_config["host"], mqtt_config.getint("port", 1883))
     mqtt_client.subscribe("test")  # get on connect messages
     mqtt_client.loop_start()
 
@@ -112,7 +113,7 @@ async def main(options: argparse.Namespace) -> None:
     i = 0
     while "cam%d" % i in config.sections():
         cams.append(
-            Camera(config["cam%d" % i], excludes.get(config["cam%d" % i]["name"], {}))
+            Camera(config["cam%d" % i], excludes.get(config["cam%d" % i]["name"], {}), mqtt_config)
         )
         i += 1
     log.info("Configured %i cams" % i)
