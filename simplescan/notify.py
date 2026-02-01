@@ -289,7 +289,7 @@ def notify(cam, message, image, predictions, config, ha):
             enrichments = codeproject.enrich(vehicle_bytes.read(), save_json)
             vehicle_message = ""
             if enrichments["count"] == 0:
-                # Don't announce if sighthound can't find a vehicle
+                # Don't announce if ALPR can't find a vehicle
                 notify_vehicle = False
             for plate in enrichments["plates"]:
                 guesses = (
