@@ -299,7 +299,7 @@ def notify(cam, message, image, predictions, config, ha):
                 + "-"
                 + "codeproject.txt",
             )
-            codeproject_url = config.get("codeproject", {}).get("url")
+            codeproject_url = config["codeproject"]["url"] if "codeproject" in config else None
             enrichments = codeproject.enrich(vehicle_bytes.read(), save_json, url=codeproject_url)
             vehicle_message = ""
             if enrichments["count"] == 0:
