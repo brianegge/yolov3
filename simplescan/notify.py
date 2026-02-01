@@ -67,7 +67,9 @@ def notify(cam, message, image, predictions, config, ha):
     has_person_road = (
         len(list(filter(lambda p: p["tagName"] == "person_road", predictions))) > 0
     )
-    len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
+    has_dog_road = (
+        len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
+    )
     packages = list(
         filter(lambda p: p["tagName"] == "package" and "departed" not in p, predictions)
     )
@@ -195,6 +197,10 @@ def notify(cam, message, image, predictions, config, ha):
     if priority is None:
         priority = 0
         logging.info("Using default priority")
+
+    # Return early if no predictions to crop
+    if len(predictions) == 0:
+        return priority
 
     # crop to area of interest
     width, height = image.size

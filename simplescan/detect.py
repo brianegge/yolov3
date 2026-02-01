@@ -38,14 +38,14 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         elif len(cam.resized.shape) == 2:
             predictions = grey_model.predict_image(cam.resized)
         else:
-            return 0, "Unknown image shape {}".format(cam.resized.shape)
+            return 0, 0, "Unknown image shape {}".format(cam.resized.shape)
     except OSError:
-        return 0, "{}=error:{}".format(cam.name, sys.exc_info()[0])
+        return 0, 0, "{}=error:{}".format(cam.name, sys.exc_info()[0])
     cam.age = cam.age + 1
     vehicle_predictions = []
     if cam.vehicle_check and vehicle_model is not None:
         vehicle_predictions = vehicle_model.predict_image(cam.resized2)
-        print(f"\n{cam.name} vehicles={vehicle_predictions}")
+        logger.debug(f"{cam.name} vehicles={vehicle_predictions}")
         # include all vehicle predictions for now
         predictions += vehicle_predictions
     prediction_time = timer() - prediction_start
