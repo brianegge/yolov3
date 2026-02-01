@@ -64,6 +64,10 @@ class HomeAssistant:
             ).json()
             self.cache[entity] = response
         except requests.exceptions.ConnectionError:
+            if entity not in self.cache:
+                raise RuntimeError(
+                    f"Failed to fetch {self.api}states/{entity} and no cached response available"
+                )
             log.warning(
                 f"Failed to fetch {self.api}states/{entity}. Using cached response"
             )

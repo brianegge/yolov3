@@ -86,6 +86,7 @@ async def main(options: argparse.Namespace) -> None:
     # Load labels
     with open(detector_config["labelfile-path"], "r") as f:
         labels = [line.strip() for line in f.readlines()]
+    vehicle_labels = []
     if "vehicle-labelfile-path" in detector_config:
         with open(detector_config["vehicle-labelfile-path"], "r") as f:
             vehicle_labels = [line.strip() for line in f.readlines()]
@@ -181,7 +182,7 @@ async def main(options: argparse.Namespace) -> None:
             except KeyboardInterrupt:
                 return
             except requests.exceptions.ConnectionError:
-                log.warning("cam:%s poll:" % cam.name, sys.exc_info()[0])
+                log.warning("cam:%s poll: %s", cam.name, sys.exc_info()[1])
 
         count = 0
         for f in concurrent.futures.as_completed(capture_futures, timeout=180):
@@ -217,8 +218,7 @@ async def main(options: argparse.Namespace) -> None:
                     return
                 except requests.exceptions.ConnectionError:
                     log.warning(
-                        "cam:%s requests.exceptions.ConnectionError:" % cam.name,
-                        sys.exc_info()[0],
+                        "cam:%s ConnectionError: %s", cam.name, sys.exc_info()[1]
                     )
             if count > 0:
                 log_line = "Snapshotting "
