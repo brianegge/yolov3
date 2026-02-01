@@ -284,9 +284,7 @@ async def main(options: argparse.Namespace) -> None:
     log.info("Graceful shutdown initiated")
     mqtt_client.disconnect()  # disconnect gracefully
     mqtt_client.loop_stop()  # stops network loop
-    del color_model
-    del grey_model
-    del vehicle_model
+    # Models are cleaned up automatically at exit via atexit handler
 
 
 if __name__ == "__main__":

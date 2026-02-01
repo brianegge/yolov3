@@ -1,8 +1,8 @@
+import atexit
 import logging
 import os
 
 import numpy as np
-import pycuda.autoinit  # noqa: F401 - required for CUDA initialization
 import pycuda.driver as cuda
 import tensorrt as trt
 from PIL import Image
@@ -12,6 +12,25 @@ from object_detection import ObjectDetection
 
 TRT_LOGGER = trt.Logger()
 logger = logging.getLogger(__name__)
+
+# Initialize CUDA once and share context across all models
+cuda.init()
+_cuda_device = cuda.Device(0)
+_cuda_context = _cuda_device.make_context()
+
+
+def _cleanup_cuda():
+    """Clean up CUDA context at exit."""
+    global _cuda_context
+    if _cuda_context is not None:
+        try:
+            _cuda_context.pop()
+        except cuda.LogicError:
+            pass  # Context already popped or invalid
+        _cuda_context = None
+
+
+atexit.register(_cleanup_cuda)
 
 
 class ONNXTensorRTv4ObjectDetection(ObjectDetection):
@@ -28,7 +47,8 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         self.channels = int(config.get("channels"))
         model_filename = config.get("onnx")
         engine_file_path = model_filename + ".engine"
-        self.cfx = cuda.Device(0).make_context()
+        # Use shared CUDA context
+        self.cfx = _cuda_context
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
         if os.path.exists(engine_file_path) and os.path.getctime(
             engine_file_path
@@ -52,8 +72,12 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         )
 
     def __del__(self):
-        self.cfx.pop()
-        del self.cfx
+        # Clean up TensorRT resources; shared CUDA context is cleaned up at exit
+        try:
+            del self.context
+            del self.engine
+        except (AttributeError, cuda.LogicError):
+            pass  # Already cleaned up or context invalid
 
     def get_engine(self, onnx_file_path, engine_file_path):
         """Takes an ONNX file and creates a TensorRT engine to run inference with"""
