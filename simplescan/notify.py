@@ -252,11 +252,7 @@ def notify(cam, message, image, predictions, config, ha):
     for p in predictions:
         cropped_image.save(os.path.join(static_dir, f"{p['tagName']}.jpg"))
 
-    if priority <= -3:
-        # logging.info('Ignoring "%s" with priority %s=%d' % (message, priority_type, priority) )
-        return priority
-    # else:
-    #    logging.info('Notifying "%s" with priority %s=%d' % (message, priority_type, priority) )
+    # Run ALPR for vehicles regardless of notification priority
     if has_visible_vehicles and len(vehicles) > 0:
         logging.info(pformat(vehicles))
         left = max(0, min(p["boundingBox"]["left"] - 0.05 for p in vehicles) * width)
@@ -303,7 +299,8 @@ def notify(cam, message, image, predictions, config, ha):
                 + "-"
                 + "codeproject.txt",
             )
-            enrichments = codeproject.enrich(vehicle_bytes.read(), save_json)
+            codeproject_url = config.get("codeproject", {}).get("url")
+            enrichments = codeproject.enrich(vehicle_bytes.read(), save_json, url=codeproject_url)
             vehicle_message = ""
             if enrichments["count"] == 0:
                 # Don't announce if ALPR can't find a vehicle

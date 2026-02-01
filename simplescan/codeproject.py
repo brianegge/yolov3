@@ -8,24 +8,26 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# CodeProject AI Server endpoint
-CODEPROJECT_URL = "http://localhost:32168/v1/image/alpr"
+# Default CodeProject AI Server endpoint (can be overridden via config)
+DEFAULT_CODEPROJECT_URL = "http://localhost:32168/v1/image/alpr"
 
 
-def enrich(image_bytes, save_json=None):
+def enrich(image_bytes, save_json=None, url=None):
     """
     Send image to CodeProject AI ALPR and extract license plate info.
 
     Args:
         image_bytes: Raw image bytes
         save_json: Optional path to save raw API response
+        url: Optional CodeProject API URL (defaults to DEFAULT_CODEPROJECT_URL)
 
     Returns:
         dict with keys: message, plates, count
     """
+    codeproject_url = url or DEFAULT_CODEPROJECT_URL
     try:
         response = requests.post(
-            CODEPROJECT_URL,
+            codeproject_url,
             files={"image": ("image.jpg", image_bytes, "image/jpeg")},
             timeout=10,
         )
