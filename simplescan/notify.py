@@ -62,7 +62,7 @@ def notify(cam, message, image, predictions, config, ha):
                 lambda p: p["tagName"] == "vehicle"
                 and "ignore" not in p
                 and "departed" not in p
-                and p["age"] == 0,
+                and p["age"] < 3,  # Run ALPR on first 3 frames to catch plates that become visible
                 predictions,
             )
         )
