@@ -4,22 +4,37 @@
 
 This is an AI camera detection system that monitors IP cameras for object detection (people, vehicles, animals, packages) using ONNX/TensorRT models on an NVIDIA Jetson Nano. It integrates with Home Assistant, MQTT, and Pushover for notifications.
 
+## Logs
+
+The aicam service logs to systemd journal. Access logs on the Jetson Nano:
+
+```bash
+# View today's logs
+ssh egge@egge-nano.home "journalctl -u aicam --since today --no-pager"
+
+# Search for errors, crashes, restarts
+ssh egge@egge-nano.home "journalctl -u aicam --since today --no-pager | grep -iE 'error|exception|traceback|watchdog|started|stopped|failed'"
+
+# Follow logs in real-time
+ssh egge@egge-nano.home "journalctl -u aicam -f"
+
+# Check service status
+ssh egge@egge-nano.home "systemctl status aicam"
+```
+
 ## Deployment
 
 ### Deploy to egge-nano
 
 ```bash
-# 1. Push changes to GitHub
+# 1. Commit and push changes to GitHub
 git push
 
-# 2. Pull on egge-nano (SSH key issues require HTTPS fetch)
-ssh egge@egge-nano "cd ~/detector/simplescan && git fetch https://github.com/brianegge/yolov3.git master && git reset --hard FETCH_HEAD"
+# 2. Pull and restart on egge-nano
+ssh egge@egge-nano.home "cd /home/egge/detector/simplescan && git pull && sudo systemctl restart aicam"
 
-# 3. Restart the service
-ssh egge@egge-nano "sudo systemctl restart aicam"
-
-# 4. Verify service is running
-ssh egge@egge-nano "sudo systemctl status aicam"
+# 3. Verify service is running
+ssh egge@egge-nano.home "systemctl status aicam | head -15"
 ```
 
 ### Configuration
