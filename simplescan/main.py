@@ -189,26 +189,29 @@ async def main(options: argparse.Namespace) -> None:
                 log.warning("cam:%s poll: %s", cam.name, sys.exc_info()[1])
 
         count = 0
-        for f in concurrent.futures.as_completed(capture_futures, timeout=180):
-            try:
-                cam = f.result()
-                if cam:
-                    p, n, m = detect(
-                        cam,
-                        color_model,
-                        grey_model,
-                        vehicle_model,
-                        config,
-                        ha,
-                    )
-                    prediction_time += p
-                    notify_time += n
-                    messages.append(m)
-                    count += 1
-            except KeyboardInterrupt:
-                return
-            except Exception:
-                log.exception("Error in detection pipeline")
+        try:
+            for f in concurrent.futures.as_completed(capture_futures, timeout=180):
+                try:
+                    cam = f.result()
+                    if cam:
+                        p, n, m = detect(
+                            cam,
+                            color_model,
+                            grey_model,
+                            vehicle_model,
+                            config,
+                            ha,
+                        )
+                        prediction_time += p
+                        notify_time += n
+                        messages.append(m)
+                        count += 1
+                except KeyboardInterrupt:
+                    return
+                except Exception:
+                    log.exception("Error in detection pipeline")
+        except concurrent.futures.TimeoutError:
+            log.warning("Camera poll timed out after 180s, continuing")
 
         if count == 0:
             # scan each camera
@@ -229,25 +232,28 @@ async def main(options: argparse.Namespace) -> None:
             if count > 0:
                 log_line = "Snapshotting "
 
-            for f in concurrent.futures.as_completed(capture_futures, timeout=180):
-                try:
-                    cam = f.result()
-                    if cam:
-                        p, n, m = detect(
-                            cam,
-                            color_model,
-                            grey_model,
-                            vehicle_model,
-                            config,
-                            ha,
-                        )
-                        prediction_time += p
-                        notify_time += n
-                        messages.append(m)
-                except KeyboardInterrupt:
-                    return
-                except Exception:
-                    log.exception("Error in detection pipeline")
+            try:
+                for f in concurrent.futures.as_completed(capture_futures, timeout=180):
+                    try:
+                        cam = f.result()
+                        if cam:
+                            p, n, m = detect(
+                                cam,
+                                color_model,
+                                grey_model,
+                                vehicle_model,
+                                config,
+                                ha,
+                            )
+                            prediction_time += p
+                            notify_time += n
+                            messages.append(m)
+                    except KeyboardInterrupt:
+                        return
+                    except Exception:
+                        log.exception("Error in detection pipeline")
+            except concurrent.futures.TimeoutError:
+                log.warning("Camera capture timed out after 180s, continuing")
         else:
             log_line = "Reading "
 
