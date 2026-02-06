@@ -49,6 +49,29 @@ class Camera:
         self.mqtt_client.username_pw_set(mqtt_config["user"], mqtt_config["password"])
         self.mqtt_client.connect(mqtt_config["host"], mqtt_config.getint("port", 1883))
         self.mqtt_client.loop_start()
+        road_line_raw = config.get("road_line", None)
+        if road_line_raw == "all":
+            self.road_line = "all"
+        elif road_line_raw:
+            self.road_line = [tuple(float(v) for v in p.split(":")) for p in road_line_raw.split(",")]
+        else:
+            self.road_line = None
+
+    def road_y_at(self, x):
+        if self.road_line is None or self.road_line == "all":
+            return None
+        points = self.road_line
+        if x <= points[0][0]:
+            return points[0][1]
+        if x >= points[-1][0]:
+            return points[-1][1]
+        for i in range(len(points) - 1):
+            x0, y0 = points[i]
+            x1, y1 = points[i + 1]
+            if x0 <= x <= x1:
+                t = (x - x0) / (x1 - x0)
+                return y0 + t * (y1 - y0)
+        return points[-1][1]
 
     def __del__(self):
         self.mqtt_client.disconnect()  # disconnect gracefully

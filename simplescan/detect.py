@@ -65,28 +65,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         p["camName"] = cam.name
     add_centers(predictions)
     # remove road
-    if cam.name in ["driveway", "peach tree"]:
-        for p in predictions:
-            x = p["center"]["x"]
-            if cam.name == "peach tree":
-                if x < 0.651:
-                    road_y = 0.31 + 0.038 * x
-                else:
-                    road_y = 0.348 + 0.131 * (x - 0.651) / (1.0 - 0.651)
-            else:
-                road_y = 0.5 * (1 - x) + 0.2 * x
-            p["road_y"] = road_y
-            if p["center"]["y"] < road_y and (
-                p["tagName"] in ["vehicle", "person", "package", "dog"]
-            ):
-                if p["tagName"] == "person":
-                    p["tagName"] = "person_road"
-                if p["tagName"] == "dog":
-                    p["tagName"] = "dog_road"
-                if p["tagName"] == "vehicle":
-                    p["tagName"] = "vehicle_road"
-                    p["ignore"] = "road"
-    elif cam.name == "mailbox":
+    if cam.road_line == "all":
         for p in predictions:
             if p["tagName"] == "person":
                 p["tagName"] = "person_road"
@@ -94,7 +73,20 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 p["tagName"] = "vehicle_road"
             elif p["tagName"] == "dog":
                 p["tagName"] = "dog_road"
-    elif cam.name == "garage-l":
+    elif cam.road_line:
+        for p in predictions:
+            x = p["center"]["x"]
+            road_y = cam.road_y_at(x)
+            p["road_y"] = road_y
+            if p["center"]["y"] < road_y and p["tagName"] in ["vehicle", "person", "package", "dog"]:
+                if p["tagName"] == "person":
+                    p["tagName"] = "person_road"
+                if p["tagName"] == "dog":
+                    p["tagName"] = "dog_road"
+                if p["tagName"] == "vehicle":
+                    p["tagName"] = "vehicle_road"
+                    p["ignore"] = "road"
+    if cam.name == "garage-l":
         for p in predictions:
             if (
                 p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24
@@ -110,7 +102,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                     p["tagName"] = "person_road"
                 if p["tagName"] == "vehicle":
                     p["tagName"] = "vehicle_road"
-    elif cam.name in ["front entry"]:
+    if cam.name in ["front entry"]:
         for p in filter(lambda p: p["tagName"] == "package", predictions):
             if p["center"]["x"] < 0.178125:
                 p["ignore"] = "in grass"
@@ -215,11 +207,9 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 width = 4
             color = colors.get(p["tagName"], fallback="red")
             draw_bbox(im_pil, p, color, width=width)
-        if cam.name in ["peach tree"]:
-            draw_road(im_pil, [(0, 0.31), (0.651, 0.348), (1.0, 0.348 + 0.131)])
-        elif cam.name in ["driveway"]:
-            draw_road(im_pil, [(0, 0.5), (1.0, 0.2)])
-        elif cam.name in ["garage-l"]:
+        if cam.road_line and cam.road_line != "all":
+            draw_road(im_pil, cam.road_line)
+        if cam.name in ["garage-l"]:
             draw_road(im_pil, [(0, 0.24), (1.0, 0.24)])
     notify_expired = []
     for e in expired:
