@@ -36,13 +36,16 @@ def on_publish(client: paho.Client, userdata: Any, mid: int) -> None:
 
 def on_connect(client: paho.Client, userdata: Any, flags: Dict, rc: int) -> None:
     mlog.info("mqtt connected")
+    client._reconnect_deadline = None
     client.publish("aicam/status", "online", retain=True)
 
 
 def on_disconnect(client: paho.Client, userdata: Any, rc: int) -> None:
-    mlog.info("mqtt disconnected reason  " + str(rc))
-    global kill_now
-    kill_now = True
+    if rc == 0:
+        mlog.info("mqtt disconnected cleanly")
+        return
+    mlog.warning("mqtt disconnected unexpectedly, reason=%s. Will retry for 5 minutes.", rc)
+    client._reconnect_deadline = time.monotonic() + 300
 
 
 def on_message(
@@ -77,6 +80,8 @@ async def main(options: argparse.Namespace) -> None:
     mqtt_client.on_disconnect = on_disconnect
     mqtt_client.on_message = on_message
     mqtt_client.will_set(lwt, payload="offline", qos=0, retain=True)
+    mqtt_client.reconnect_delay_set(min_delay=1, max_delay=30)
+    mqtt_client._reconnect_deadline = None
     mqtt_config = config["mqtt"]
     mqtt_client.username_pw_set(mqtt_config["user"], mqtt_config["password"])
     try:
@@ -174,6 +179,10 @@ async def main(options: argparse.Namespace) -> None:
     global kill_now
     while not kill_now:
         sd.notify("WATCHDOG=1")
+        if mqtt_client._reconnect_deadline is not None:
+            if time.monotonic() > mqtt_client._reconnect_deadline:
+                log.error("MQTT reconnect failed after 5 minutes, shutting down")
+                break
         start_time = timer()
         prediction_time = 0.0
         notify_time = 0.0
