@@ -188,11 +188,10 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             new_predictions.append(p)
     expired = []
     for prev_tag, prev_class in cam.prev_predictions.items():
-        expired += [
-            x
-            for x in prev_class
-            if x["last_time"] < datetime.now() - timedelta(minutes=1)
-        ]
+        for x in prev_class:
+            expiry_minutes = min(1 + x["age"] * cam.interval / 60, 60)
+            if x["last_time"] < datetime.now() - timedelta(minutes=expiry_minutes):
+                expired.append(x)
         prev_class[:] = [x for x in prev_class if x not in expired]
 
     if len(valid_predictions) >= 0:
