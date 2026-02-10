@@ -12,10 +12,23 @@ import codeproject
 logger = logging.getLogger(__name__)
 
 license_plates = {}
+# Maps variant strings (exact + edits1) of known plates to their original plate key.
+# At query time, checking edits1(query) against this dict covers edit distance <= 2.
+_plate_variants = {}
+
+
+def _edits1(word):
+    "All edits that are one edit away from `word`."
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+    deletes = [L + R[1:] for L, R in splits if R]
+    replaces = [L + c + R[1:] for L, R in splits if R for c in letters]
+    inserts = [L + c + R for L, R in splits for c in letters]
+    return set(deletes + replaces + inserts)
 
 
 def _load_license_plates():
-    global license_plates
+    global license_plates, _plate_variants
     if not license_plates:
         try:
             with open("license-plates.json") as f:
@@ -23,23 +36,28 @@ def _load_license_plates():
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.warning(f"Could not load license-plates.json: {e}")
             license_plates = {}
+        # Pre-expand known plates so detection-time lookup is O(edits1) not O(edits2)
+        for plate_key in license_plates:
+            _plate_variants[plate_key] = plate_key
+            for variant in _edits1(plate_key):
+                _plate_variants.setdefault(variant, plate_key)
     return license_plates
 
 
-def edits1(word):
-    "All edits that are one edit away from `word`."
-    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
-    deletes = [L + R[1:] for L, R in splits if R]
-    # transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R)>1]
-    replaces = [L + c + R[1:] for L, R in splits if R for c in letters]
-    inserts = [L + c + R for L, R in splits for c in letters]
-    return set(deletes + replaces + inserts)
+def _match_plate(plate):
+    """Find the best matching known plate within edit distance 2.
 
-
-def edits2(word):
-    "All edits that are two edits away from `word`."
-    return (e2 for e1 in edits1(word) for e2 in edits1(e1))
+    Checks: exact match, then edits1(query) against pre-computed edits1(known).
+    edits1(query) ∩ edits1(known) covers all pairs within edit distance 2.
+    """
+    # Distance 0 or 1: query itself may be in the pre-expanded variants
+    if plate in _plate_variants:
+        return _plate_variants[plate]
+    # Distance 1-2: check edits1(query) against pre-expanded variants
+    for variant in _edits1(plate):
+        if variant in _plate_variants:
+            return _plate_variants[variant]
+    return None
 
 
 def notify(cam, message, image, predictions, config, ha):
@@ -308,37 +326,30 @@ def notify(cam, message, image, predictions, config, ha):
             plates_db = _load_license_plates()
             house_cleaner_found = False
             for plate in enrichments["plates"]:
-                guesses = (
-                    [plate]
-                    + [plate.replace(" ", "")]
-                    + list(edits1(plate))
-                    + list(edits2(plate))
-                )
-                for guess in guesses:
-                    if guess in plates_db:
-                        if len(vehicle_message) > 0:
-                            vehicle_message += " and "
-                        r = plates_db[guess]
-                        if "owner" in r:
-                            vehicle_message += r["owner"] + "'s "
-                            if r["owner"].lower() == "house cleaner":
-                                house_cleaner_found = True
-                        if "color" in r:
-                            vehicle_message += r["color"] + " "
-                        if "make" in r:
-                            vehicle_message += r["make"] + " "
-                            if "model" in r:
-                                vehicle_message += r["model"]
-                        else:
-                            vehicle_message += "vehicle"
-                        if r.get("announce", True) is False:
-                            logging.info(
-                                "Ignoring {}'s vehicle with plate {}".format(
-                                    r["owner"], plate
-                                )
+                matched_key = _match_plate(plate) or _match_plate(plate.replace(" ", ""))
+                if matched_key:
+                    r = plates_db[matched_key]
+                    if len(vehicle_message) > 0:
+                        vehicle_message += " and "
+                    if "owner" in r:
+                        vehicle_message += r["owner"] + "'s "
+                        if r["owner"].lower() == "house cleaner":
+                            house_cleaner_found = True
+                    if "color" in r:
+                        vehicle_message += r["color"] + " "
+                    if "make" in r:
+                        vehicle_message += r["make"] + " "
+                        if "model" in r:
+                            vehicle_message += r["model"]
+                    else:
+                        vehicle_message += "vehicle"
+                    if r.get("announce", True) is False:
+                        logging.info(
+                            "Ignoring {}'s vehicle with plate {}".format(
+                                r["owner"], plate
                             )
-                            vehicle_message = None
-                        break
+                        )
+                        vehicle_message = None
                 if vehicle_message is not None:
                     if vehicle_message == "":
                         vehicle_message = "Vehicle"

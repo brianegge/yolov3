@@ -19,10 +19,11 @@ Type=notify
 Restart=always
 TimeoutStartSec=10min
 WatchdogSec=5min
+MemoryMax=3G
 #StandardOutput=append:/var/log/aicam-console.log
 #StandardError=append:/var/log/aicam-console.log
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=aicam
 
 [Install]
