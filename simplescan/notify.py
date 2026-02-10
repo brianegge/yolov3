@@ -99,6 +99,7 @@ def notify(cam, message, image, predictions, config, ha):
     has_dog_road = (
         len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
     )
+    dog_inside = ha.is_dog_inside() if (has_dog or has_dog_road) else False
     packages = list(
         filter(lambda p: p["tagName"] == "package" and "departed" not in p, predictions)
     )
@@ -199,6 +200,7 @@ def notify(cam, message, image, predictions, config, ha):
             and (p["camName"] == "garage")
             and probability > 0.9
             and not has_person
+            and dog_inside
         ):
             i = 1
             i_type = "dog in garage rule"
@@ -216,7 +218,7 @@ def notify(cam, message, image, predictions, config, ha):
             else:
                 priority = max(i, priority)
     # raise priority if dog is near package
-    if has_package and has_dog:
+    if has_package and has_dog and dog_inside:
         priority = 1
     if priority is None:
         for p in predictions:

@@ -150,6 +150,22 @@ class HomeAssistant:
         else:
             return "away"
 
+    def is_dog_inside(self) -> bool:
+        entity = "sensor.rufus_status"
+        try:
+            response = requests.get(
+                f"{self.api}states/{entity}", headers=self.headers
+            ).json()
+            self.cache[entity] = response
+        except requests.exceptions.ConnectionError:
+            if entity not in self.cache:
+                raise RuntimeError(
+                    f"Failed to fetch {entity} and no cached response available"
+                )
+            log.warning(f"Failed to fetch {entity}. Using cached response")
+            response = self.cache[entity]
+        return response.get("state") == "inside"
+
     def is_dark(self) -> bool:
         return self.get_state("binary_sensor.is_dark")
 
