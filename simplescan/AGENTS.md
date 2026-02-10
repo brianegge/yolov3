@@ -57,11 +57,20 @@ ssh egge@egge-nano.home "dmesg | grep -iE 'oom|killed|thermal|shutdown|voltage'"
 # 1. Commit and push changes to GitHub
 git push
 
-# 2. Pull and restart on egge-nano
-ssh egge@egge-nano.home "cd /home/egge/detector/simplescan && git pull && sudo systemctl restart aicam"
+# 2. Pull and restart on egge-nano (pulls from root of repo, not simplescan/)
+ssh egge@egge-nano.home "cd /home/egge/detector && git pull && sudo cp simplescan/aicam.service /etc/systemd/system/aicam.service && sudo systemctl daemon-reload && sudo systemctl restart aicam"
 
 # 3. Verify service is running
 ssh egge@egge-nano.home "systemctl status aicam | head -15"
+```
+
+### Troubleshooting: GitHub SSH on egge-nano
+
+If `git pull` fails with "Host key verification failed", GitHub's IP keys have rotated:
+
+```bash
+# Remove stale IP key and re-scan
+ssh egge@egge-nano.home "ssh-keygen -R \$(ssh -T git@github.com 2>&1 | grep -oP '[\d.]+') 2>/dev/null; ssh-keyscan -t ecdsa github.com >> ~/.ssh/known_hosts 2>&1"
 ```
 
 ### Configuration
