@@ -37,8 +37,10 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     try:
         if len(cam.resized.shape) == 3:
             predictions = color_model.predict_image(cam.resized)
+            model_name = "color"
         elif len(cam.resized.shape) == 2:
             predictions = grey_model.predict_image(cam.resized)
+            model_name = "grey"
         else:
             return 0, 0, "Unknown image shape {}".format(cam.resized.shape)
     except OSError:
@@ -50,6 +52,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         logger.debug(f"{cam.name} vehicles={vehicle_predictions}")
         # include all vehicle predictions for now
         predictions += vehicle_predictions
+        model_name += "+vehicle"
     prediction_time = timer() - prediction_start
     notify_time = 0.0
     # filter out lower predictions
@@ -236,6 +239,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             notify_expired,
             config,
             ha,
+            model_name=model_name,
         )
         notify_time += timer() - notify_start
 
@@ -281,7 +285,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             message = "%s near %s" % (",".join(valid_objects), cam.name)
         if cam.age > 2 or "once" in config["detector"]:
             notify_start = timer()
-            priority = notify(cam, message, im_pil, valid_predictions, config, ha)
+            priority = notify(cam, message, im_pil, valid_predictions, config, ha, model_name=model_name)
             notify_time += timer() - notify_start
         else:
             logger.info("Skipping notifications until after warm up")

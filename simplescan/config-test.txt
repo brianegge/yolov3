@@ -1,3 +1,9 @@
 [homeassistant]
 token = fake-token-for-testing
 api = http://localhost:8123/api/
+
+[roboflow]
+api-key = test-key
+project-id = test-project
+webhook-url = https://xnihc94on042u1kn84c619pp2ksyt1m5.ui.nabu.casa/api/webhook/aicam_roboflow_review
+delete-after-upload = false

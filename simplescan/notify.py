@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import uuid
 from datetime import date, datetime
 from io import BytesIO
 from pprint import pformat
@@ -60,7 +61,7 @@ def _match_plate(plate):
     return None
 
 
-def notify(cam, message, image, predictions, config, ha):
+def notify(cam, message, image, predictions, config, ha, model_name="color"):
     mode = ha.mode()
     mode_key = "priority-%s" % mode
     if mode_key in config:
@@ -403,16 +404,32 @@ def notify(cam, message, image, predictions, config, ha):
         cropped_image.save(output_bytes, "jpeg")
         output_bytes.seek(0)
         # send as -2 to generate no notification/alert, -1 to always send as a quiet notification, 1 to display as high-priority and bypass the user's quiet hours, or 2 to also require confirmation from the user
+        pushover_data = {
+            "token": config["pushover"]["token"],
+            "user": config["pushover"]["user"],
+            "message": message,
+            "priority": priority,
+            "sound": sound,
+        }
+        # Save review image and add Flag for Review link if roboflow is configured
+        if "roboflow" in config:
+            try:
+                review_dir = os.path.join(config["detector"]["save-path"], "review")
+                os.makedirs(review_dir, exist_ok=True)
+                review_id = uuid.uuid4().hex[:8]
+                review_file = "%s.jpg" % review_id
+                image.save(os.path.join(review_dir, review_file))
+                webhook_url = config["roboflow"]["webhook-url"]
+                pushover_data["url"] = "%s?file=%s&model=%s&cam=%s" % (
+                    webhook_url, review_file, model_name, cam.name.replace(" ", "_"),
+                )
+                pushover_data["url_title"] = "Flag for Review"
+            except Exception:
+                logger.exception("Failed to save review image")
         try:
             r = requests.post(
                 "https://api.pushover.net/1/messages.json",
-                data={
-                    "token": config["pushover"]["token"],
-                    "user": config["pushover"]["user"],
-                    "message": message,
-                    "priority": priority,
-                    "sound": sound,
-                },
+                data=pushover_data,
                 files={"attachment": ("image.jpg", output_bytes, "image/jpeg")},
             )
             if r.status_code != 200:
