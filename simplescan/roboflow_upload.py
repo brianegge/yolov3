@@ -28,10 +28,27 @@ class Config(object):
     def __init__(self, config):
         section = config["roboflow"]
         self.api_key = section["api-key"]
-        self.project_id = section["project-id"]
         self.delete_after_upload = section.getboolean("delete-after-upload", True)
         self.save_path = config["detector"]["save-path"]
         self.review_dir = os.path.join(self.save_path, "review")
+        # Build project routing: {class_name: [project_id, ...]}
+        # Config keys like: project.ipcams2 = cat,dog,person
+        self.projects = {}  # project_id -> set of classes
+        for key, value in section.items():
+            if key.startswith("project."):
+                project_id = key[len("project."):]
+                classes = set(c.strip() for c in value.split(","))
+                self.projects[project_id] = classes
+        if not self.projects:
+            raise ValueError("No project.* keys found in [roboflow] config")
+
+    def projects_for_tags(self, tags):
+        """Return list of project IDs that cover any of the given tags."""
+        matched = []
+        for project_id, classes in self.projects.items():
+            if tags & classes:
+                matched.append(project_id)
+        return matched
 
 
 _config = None
@@ -63,6 +80,7 @@ class UploadHandler(BaseHTTPRequestHandler):
         filename = body.get("file")
         model = body.get("model", "unknown")
         cam = body.get("cam", "unknown")
+        detection_tags = set(body.get("tags", "").split(",")) if body.get("tags") else set()
 
         if not filename:
             self._respond(400, {"error": "missing 'file' field"})
@@ -76,6 +94,12 @@ class UploadHandler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "file not found: %s" % filename})
             return
 
+        target_projects = _config.projects_for_tags(detection_tags)
+        if not target_projects:
+            logger.warning("No project matches tags %s, skipping upload", detection_tags)
+            self._respond(400, {"error": "no project matches tags: %s" % ",".join(sorted(detection_tags))})
+            return
+
         try:
             with open(filepath, "rb") as f:
                 image_data = f.read()
@@ -85,23 +109,28 @@ class UploadHandler(BaseHTTPRequestHandler):
 
         encoded = base64.b64encode(image_data).decode("utf-8")
         name = os.path.splitext(filename)[0]
-        tags = "%s,%s" % (cam.replace(" ", "_"), model)
-        url = "https://api.roboflow.com/dataset/%s/upload?api_key=%s&name=%s&split=train&tag=%s" % (
-            _config.project_id, _config.api_key, name, tags
-        )
+        upload_tags = "%s,%s" % (cam.replace(" ", "_"), model)
+        uploaded = []
 
-        try:
-            req = Request(url, data=encoded.encode("utf-8"), method="POST")
-            req.add_header("Content-Type", "application/x-www-form-urlencoded")
-            resp = urlopen(req, timeout=30)
-            resp_body = resp.read().decode("utf-8")
-            logger.info("Uploaded %s to Roboflow: %s", filename, resp_body)
-        except (HTTPError, URLError) as e:
-            error_body = ""
-            if hasattr(e, "read"):
-                error_body = e.read().decode("utf-8", errors="replace")
-            logger.error("Roboflow upload failed for %s: %s %s", filename, e, error_body)
-            self._respond(502, {"error": "roboflow upload failed: %s" % e})
+        for project_id in target_projects:
+            url = "https://api.roboflow.com/dataset/%s/upload?api_key=%s&name=%s&split=train&tag=%s" % (
+                project_id, _config.api_key, name, upload_tags
+            )
+            try:
+                req = Request(url, data=encoded.encode("utf-8"), method="POST")
+                req.add_header("Content-Type", "application/x-www-form-urlencoded")
+                resp = urlopen(req, timeout=30)
+                resp_body = resp.read().decode("utf-8")
+                logger.info("Uploaded %s to %s: %s", filename, project_id, resp_body)
+                uploaded.append(project_id)
+            except (HTTPError, URLError) as e:
+                error_body = ""
+                if hasattr(e, "read"):
+                    error_body = e.read().decode("utf-8", errors="replace")
+                logger.error("Roboflow upload to %s failed for %s: %s %s", project_id, filename, e, error_body)
+
+        if not uploaded:
+            self._respond(502, {"error": "all uploads failed"})
             return
 
         if _config.delete_after_upload:
@@ -111,7 +140,7 @@ class UploadHandler(BaseHTTPRequestHandler):
             except OSError as e:
                 logger.warning("Failed to delete %s: %s", filepath, e)
 
-        self._respond(200, {"status": "uploaded", "file": filename, "tags": tags})
+        self._respond(200, {"status": "uploaded", "file": filename, "projects": uploaded})
 
     def _respond(self, code, body):
         self.send_response(code)
