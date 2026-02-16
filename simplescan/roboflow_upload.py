@@ -79,7 +79,7 @@ def _do_upload(filename, model, cam, detection_tags):
 
     encoded = base64.b64encode(image_data).decode("utf-8")
     name = os.path.splitext(filename)[0]
-    upload_tags = "%s,%s" % (cam.replace(" ", "_"), model)
+    upload_tags = "%s,%s" % (cam.replace(" ", "_"), model.replace(" ", "_"))
     uploaded = []
 
     for project_id in target_projects:
