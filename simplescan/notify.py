@@ -6,7 +6,9 @@ from datetime import date, datetime
 from io import BytesIO
 from pprint import pformat
 
+import cv2
 import requests
+from PIL import Image
 
 import codeproject
 
@@ -418,7 +420,10 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
                 os.makedirs(review_dir, exist_ok=True)
                 review_id = uuid.uuid4().hex[:8]
                 review_file = "%s.jpg" % review_id
-                (original_image or image).save(os.path.join(review_dir, review_file))
+                review_image = original_image if original_image is not None else image
+                if not isinstance(review_image, Image.Image):
+                    review_image = Image.fromarray(cv2.cvtColor(review_image, cv2.COLOR_BGR2RGB))
+                review_image.save(os.path.join(review_dir, review_file))
                 webhook_url = config["roboflow"]["webhook-url"]
                 detection_tags = set(p["tagName"] for p in predictions if "ignore" not in p)
                 pushover_data["url"] = "%s?file=%s&model=%s&cam=%s&tags=%s" % (
