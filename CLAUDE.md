@@ -24,10 +24,10 @@ ssh egge@egge-nano.home "journalctl -u aicam-review -n 100 --no-pager"
 ssh egge@egge-nano.home "journalctl -u aicam --no-pager" | grep -i error
 
 # Restart service
-ssh egge@egge-nano.home "systemctl restart aicam"
+ssh egge@egge-nano.home "sudo systemctl restart aicam"
 ```
 
 ## Deploy Changes
 ```bash
-ssh egge@egge-nano.home "cd /home/egge/detector && git pull && systemctl restart aicam"
+ssh egge@egge-nano.home "cd /home/egge/detector && git pull && sudo systemctl restart aicam"
 ```
