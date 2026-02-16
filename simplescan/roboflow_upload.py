@@ -20,6 +20,10 @@ try:
     from urllib.error import URLError, HTTPError
 except ImportError:
     pass
+try:
+    from urllib.parse import urlparse, parse_qs
+except ImportError:
+    from urlparse import urlparse, parse_qs
 
 logger = logging.getLogger("aicam-review")
 
@@ -54,12 +58,106 @@ class Config(object):
 _config = None
 
 
+def _do_upload(filename, model, cam, detection_tags):
+    """Upload a review image to Roboflow. Returns (status_code, result_dict)."""
+    filename = os.path.basename(filename)
+    filepath = os.path.join(_config.review_dir, filename)
+
+    if not os.path.isfile(filepath):
+        return (404, {"error": "file not found: %s" % filename})
+
+    target_projects = _config.projects_for_tags(detection_tags)
+    if not target_projects:
+        logger.warning("No project matches tags %s, skipping upload", detection_tags)
+        return (400, {"error": "no project matches tags: %s" % ",".join(sorted(detection_tags))})
+
+    try:
+        with open(filepath, "rb") as f:
+            image_data = f.read()
+    except IOError as e:
+        return (500, {"error": "failed to read file: %s" % e})
+
+    encoded = base64.b64encode(image_data).decode("utf-8")
+    name = os.path.splitext(filename)[0]
+    upload_tags = "%s,%s" % (cam.replace(" ", "_"), model)
+    uploaded = []
+
+    for project_id in target_projects:
+        url = "https://api.roboflow.com/dataset/%s/upload?api_key=%s&name=%s&split=train&tag=%s" % (
+            project_id, _config.api_key, name, upload_tags
+        )
+        try:
+            req = Request(url, data=encoded.encode("utf-8"), method="POST")
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
+            resp = urlopen(req, timeout=30)
+            resp_body = resp.read().decode("utf-8")
+            logger.info("Uploaded %s to %s: %s", filename, project_id, resp_body)
+            uploaded.append(project_id)
+        except (HTTPError, URLError) as e:
+            error_body = ""
+            if hasattr(e, "read"):
+                error_body = e.read().decode("utf-8", errors="replace")
+            logger.error("Roboflow upload to %s failed for %s: %s %s", project_id, filename, e, error_body)
+
+    if not uploaded:
+        return (502, {"error": "all uploads failed"})
+
+    if _config.delete_after_upload:
+        try:
+            os.remove(filepath)
+            logger.info("Deleted review file %s", filepath)
+        except OSError as e:
+            logger.warning("Failed to delete %s: %s", filepath, e)
+
+    return (200, {"status": "uploaded", "file": filename, "projects": uploaded})
+
+
 class UploadHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
             self._respond(200, {"status": "ok"})
-        else:
+            return
+
+        params = parse_qs(parsed.query)
+        filename = params.get("file", [None])[0]
+        if not filename:
             self._respond(404, {"error": "not found"})
+            return
+
+        model = params.get("model", ["unknown"])[0]
+        cam = params.get("cam", ["unknown"])[0]
+        tags_str = params.get("tags", [""])[0]
+        detection_tags = set(tags_str.split(",")) if tags_str else set()
+
+        code, result = _do_upload(filename, model, cam, detection_tags)
+
+        if code == 200:
+            title = "Image Flagged for Review"
+            body = "<p>Uploaded <b>%s</b> from <b>%s</b> to %s.</p>" % (
+                filename, cam.replace("_", " "),
+                ", ".join(result["projects"]),
+            )
+        else:
+            title = "Upload Failed"
+            body = "<p>%s</p>" % result.get("error", "unknown error")
+
+        html = (
+            "<!DOCTYPE html><html><head>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>%s</title>"
+            "<style>body{font-family:system-ui,sans-serif;max-width:480px;"
+            "margin:40px auto;padding:0 16px;text-align:center}"
+            ".ok{color:#16a34a}.err{color:#dc2626}</style>"
+            "</head><body>"
+            "<h2 class='%s'>%s</h2>%s"
+            "</body></html>"
+        ) % ("ok" if code == 200 else "err", title, title, body)
+
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
 
     def do_POST(self):
         if self.path != "/upload":
@@ -86,61 +184,8 @@ class UploadHandler(BaseHTTPRequestHandler):
             self._respond(400, {"error": "missing 'file' field"})
             return
 
-        # Prevent path traversal
-        filename = os.path.basename(filename)
-        filepath = os.path.join(_config.review_dir, filename)
-
-        if not os.path.isfile(filepath):
-            self._respond(404, {"error": "file not found: %s" % filename})
-            return
-
-        target_projects = _config.projects_for_tags(detection_tags)
-        if not target_projects:
-            logger.warning("No project matches tags %s, skipping upload", detection_tags)
-            self._respond(400, {"error": "no project matches tags: %s" % ",".join(sorted(detection_tags))})
-            return
-
-        try:
-            with open(filepath, "rb") as f:
-                image_data = f.read()
-        except IOError as e:
-            self._respond(500, {"error": "failed to read file: %s" % e})
-            return
-
-        encoded = base64.b64encode(image_data).decode("utf-8")
-        name = os.path.splitext(filename)[0]
-        upload_tags = "%s,%s" % (cam.replace(" ", "_"), model)
-        uploaded = []
-
-        for project_id in target_projects:
-            url = "https://api.roboflow.com/dataset/%s/upload?api_key=%s&name=%s&split=train&tag=%s" % (
-                project_id, _config.api_key, name, upload_tags
-            )
-            try:
-                req = Request(url, data=encoded.encode("utf-8"), method="POST")
-                req.add_header("Content-Type", "application/x-www-form-urlencoded")
-                resp = urlopen(req, timeout=30)
-                resp_body = resp.read().decode("utf-8")
-                logger.info("Uploaded %s to %s: %s", filename, project_id, resp_body)
-                uploaded.append(project_id)
-            except (HTTPError, URLError) as e:
-                error_body = ""
-                if hasattr(e, "read"):
-                    error_body = e.read().decode("utf-8", errors="replace")
-                logger.error("Roboflow upload to %s failed for %s: %s %s", project_id, filename, e, error_body)
-
-        if not uploaded:
-            self._respond(502, {"error": "all uploads failed"})
-            return
-
-        if _config.delete_after_upload:
-            try:
-                os.remove(filepath)
-                logger.info("Deleted review file %s", filepath)
-            except OSError as e:
-                logger.warning("Failed to delete %s: %s", filepath, e)
-
-        self._respond(200, {"status": "uploaded", "file": filename, "projects": uploaded})
+        code, result = _do_upload(filename, model, cam, detection_tags)
+        self._respond(code, result)
 
     def _respond(self, code, body):
         self.send_response(code)
