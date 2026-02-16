@@ -61,7 +61,7 @@ def _match_plate(plate):
     return None
 
 
-def notify(cam, message, image, predictions, config, ha, model_name="color"):
+def notify(cam, message, image, predictions, config, ha, model_name="color", original_image=None):
     mode = ha.mode()
     mode_key = "priority-%s" % mode
     if mode_key in config:
@@ -418,7 +418,7 @@ def notify(cam, message, image, predictions, config, ha, model_name="color"):
                 os.makedirs(review_dir, exist_ok=True)
                 review_id = uuid.uuid4().hex[:8]
                 review_file = "%s.jpg" % review_id
-                image.save(os.path.join(review_dir, review_file))
+                (original_image or image).save(os.path.join(review_dir, review_file))
                 webhook_url = config["roboflow"]["webhook-url"]
                 detection_tags = set(p["tagName"] for p in predictions if "ignore" not in p)
                 pushover_data["url"] = "%s?file=%s&model=%s&cam=%s&tags=%s" % (

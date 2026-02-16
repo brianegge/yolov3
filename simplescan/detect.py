@@ -240,6 +240,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             config,
             ha,
             model_name=model_name,
+            original_image=image,
         )
         notify_time += timer() - notify_start
 
@@ -285,7 +286,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             message = "%s near %s" % (",".join(valid_objects), cam.name)
         if cam.age > 2 or "once" in config["detector"]:
             notify_start = timer()
-            priority = notify(cam, message, im_pil, valid_predictions, config, ha, model_name=model_name)
+            priority = notify(cam, message, im_pil, valid_predictions, config, ha, model_name=model_name, original_image=image)
             notify_time += timer() - notify_start
         else:
             logger.info("Skipping notifications until after warm up")
