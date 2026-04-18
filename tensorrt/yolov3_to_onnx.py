@@ -206,8 +206,7 @@ class ConvParams:
         self.conv_weight_dims = conv_weight_dims
 
     def generate_param_name(self, param_category, suffix):
-        """Generates a name based on two string inputs, and checks if the combination is valid.
-        """
+        """Generates a name based on two string inputs, and checks if the combination is valid."""
         assert suffix
         assert param_category in ["bn", "conv"]
         assert suffix in ["scale", "mean", "var", "weights", "bias"]

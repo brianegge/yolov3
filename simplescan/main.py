@@ -14,7 +14,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from timeit import default_timer as timer
-from typing import Any, Dict
+from typing import Any
 
 import paho.mqtt.client as paho
 import requests
@@ -63,7 +63,7 @@ def on_publish(client: paho.Client, userdata: Any, mid: int) -> None:
     mlog.debug(f"on_publish({userdata},{mid})")
 
 
-def publish_discovery(client: paho.Client, ctx: Dict[str, Any]) -> None:
+def publish_discovery(client: paho.Client, ctx: dict[str, Any]) -> None:
     """Publish HA MQTT discovery configs and initial retained state.
 
     Called on every (re)connect so the broker's retained store self-heals after a broker restart or retained-message
@@ -165,7 +165,7 @@ def publish_discovery(client: paho.Client, ctx: Dict[str, Any]) -> None:
             client.publish(f"{cam.ha_name}/{item}/count", 0, retain=True)
 
 
-def on_connect(client: paho.Client, userdata: Any, flags: Dict, rc: int) -> None:
+def on_connect(client: paho.Client, userdata: Any, flags: dict, rc: int) -> None:
     mlog.info("mqtt connected")
     client._reconnect_deadline = None
     client.publish("aicam/status", "online", retain=True)
@@ -199,10 +199,10 @@ async def main(options: argparse.Namespace) -> None:
     config: configparser.ConfigParser = configparser.ConfigParser()
     config.read(options.config_file)
     ha: HomeAssistant = HomeAssistant(config["homeassistant"])
-    detector_config: Dict[str, str] = config["detector"]
-    color_model_config: Dict[str, str] = config["color-model"]
-    grey_model_config: Dict[str, str] = config["grey-model"]
-    mqtt_icons: Dict[str, str] = config["mqtt_icons"]
+    detector_config: dict[str, str] = config["detector"]
+    color_model_config: dict[str, str] = config["color-model"]
+    grey_model_config: dict[str, str] = config["grey-model"]
+    mqtt_icons: dict[str, str] = config["mqtt_icons"]
     lwt: str = "aicam/status"
     mqtt_client: paho.Client = paho.Client(client_id="aicam")
     mqtt_client.enable_logger(logger=mlog)
@@ -265,7 +265,7 @@ async def main(options: argparse.Namespace) -> None:
     version = get_version()
     dev = device_info(version)
 
-    ctx: Dict[str, Any] = {
+    ctx: dict[str, Any] = {
         "cams": cams,
         "dev": dev,
         "lwt": lwt,

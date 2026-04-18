@@ -25,8 +25,9 @@ except ImportError:
 try:
     from urllib.parse import parse_qs, urlencode, urlparse
 except ImportError:
-    from urlparse import parse_qs, urlparse
     from urllib import urlencode
+
+    from urlparse import parse_qs, urlparse
 
 logger = logging.getLogger("aicam-review")
 

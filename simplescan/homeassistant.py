@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import datetime
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -11,9 +13,9 @@ log = logging.getLogger(__name__)
 class HomeAssistant:
     """Interface with HomeAssistant."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
-        self.config: Dict[str, Any] = config
-        self.headers: Dict[str, str] = {"Authorization": f"Bearer {self.config['token']}"}
+    def __init__(self, config: dict[str, Any]) -> None:
+        self.config: dict[str, Any] = config
+        self.headers: dict[str, str] = {"Authorization": f"Bearer {self.config['token']}"}
         self.api: str = self.config.get("api", "http://homeassistant.home:8123/api/")
         try:
             response: requests.Response = requests.get(self.api, headers=self.headers, timeout=10)
@@ -23,7 +25,7 @@ class HomeAssistant:
                 log.warning(f"Unexpected HA response: {message}")
         except (requests.exceptions.RequestException, KeyError, ValueError) as e:
             log.warning(f"Failed to connect to Home Assistant: {e}")
-        self.names: Dict[str, Any] = {}
+        self.names: dict[str, Any] = {}
         try:
             response = requests.get(urljoin(self.api, "states"), headers=self.headers, timeout=10)
             for entity in response.json():
@@ -31,8 +33,8 @@ class HomeAssistant:
                     self.names[entity["attributes"]["friendly_name"]] = entity
         except (requests.exceptions.RequestException, KeyError, ValueError) as e:
             log.warning(f"Failed to load HA states: {e}")
-        self.last_house_cleaners_arrived: Optional[datetime.datetime] = None
-        self.cache: Dict[str, Any] = {}
+        self.last_house_cleaners_arrived: datetime.datetime | None = None
+        self.cache: dict[str, Any] = {}
 
     def set_scene(self, scene: str) -> requests.Response:
         r = requests.post(
