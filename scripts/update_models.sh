@@ -3,10 +3,10 @@
 set -o errexit
 
 script_dir=$(
-  cd $(dirname $0)
+  cd -- "$(dirname -- "$0")"
   pwd
 )
-cd $script_dir
+cd -- "$script_dir"
 model_source=/home/egge/detector/models
 # model_source=/home/egge/gdrive/dev/packages
 cfg=${model_source}/packages-yolov4-608-3-tiny-detector.cfg

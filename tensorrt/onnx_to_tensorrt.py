@@ -53,6 +53,7 @@ import os
 import sys
 
 import numpy as np
+import pycuda.autoinit  # noqa: F401 - initializes the CUDA context for PyCUDA/TensorRT helpers
 from data_processing import ALL_CATEGORIES, PostprocessYOLO, PreprocessYOLO
 from PIL import ImageDraw
 from yolov3_to_onnx import download_file

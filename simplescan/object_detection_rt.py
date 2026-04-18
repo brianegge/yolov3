@@ -28,7 +28,7 @@ class ONNXTensorRTObjectDetection(ObjectDetection):
         engine_file_path = model_filename + ".engine"
         self.cfx = cuda.Device(0).make_context()
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
-        if os.path.exists(engine_file_path) and os.path.getctime(engine_file_path) > os.path.getctime(model_filename):
+        if os.path.exists(engine_file_path) and os.path.getmtime(engine_file_path) > os.path.getmtime(model_filename):
             # If a serialized engine exists, use it instead of building an engine.
             print("Reading engine from file {} for classes {}".format(engine_file_path, ",".join(labels)))
             with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:

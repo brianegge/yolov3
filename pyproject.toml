@@ -134,6 +134,7 @@ multi_line_output = 0
 
 [tool.ruff]
 line-length = 120
+target-version = "py37"  # fork deploys to Jetson Nano Python 3.6; py37 is ruff's floor and keeps UP006/UP007 (typing.Dict, Optional) from being rewritten to PEP 585/604
 
 [tool.docformatter]
 wrap-summaries = 120

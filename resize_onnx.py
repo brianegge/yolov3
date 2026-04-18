@@ -34,6 +34,6 @@ def convert(model_filename):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print(f"USAGE: {sys.argv[0]} modex")
+        print(f"USAGE: {sys.argv[0]} model.onnx")
     else:
         convert(sys.argv[1])
