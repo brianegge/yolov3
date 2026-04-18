@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import datetime
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -9,13 +11,11 @@ log = logging.getLogger(__name__)
 
 
 class HomeAssistant:
-    """interface with HomeAssistant"""
+    """Interface with HomeAssistant."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
-        self.config: Dict[str, Any] = config
-        self.headers: Dict[str, str] = {
-            "Authorization": f"Bearer {self.config['token']}"
-        }
+    def __init__(self, config: dict[str, Any]) -> None:
+        self.config: dict[str, Any] = config
+        self.headers: dict[str, str] = {"Authorization": f"Bearer {self.config['token']}"}
         self.api: str = self.config.get("api", "http://homeassistant.home:8123/api/")
         try:
             response: requests.Response = requests.get(self.api, headers=self.headers, timeout=10)
@@ -25,7 +25,7 @@ class HomeAssistant:
                 log.warning(f"Unexpected HA response: {message}")
         except (requests.exceptions.RequestException, KeyError, ValueError) as e:
             log.warning(f"Failed to connect to Home Assistant: {e}")
-        self.names: Dict[str, Any] = {}
+        self.names: dict[str, Any] = {}
         try:
             response = requests.get(urljoin(self.api, "states"), headers=self.headers, timeout=10)
             for entity in response.json():
@@ -33,8 +33,8 @@ class HomeAssistant:
                     self.names[entity["attributes"]["friendly_name"]] = entity
         except (requests.exceptions.RequestException, KeyError, ValueError) as e:
             log.warning(f"Failed to load HA states: {e}")
-        self.last_house_cleaners_arrived: Optional[datetime.datetime] = None
-        self.cache: Dict[str, Any] = {}
+        self.last_house_cleaners_arrived: datetime.datetime | None = None
+        self.cache: dict[str, Any] = {}
 
     def set_scene(self, scene: str) -> requests.Response:
         r = requests.post(
@@ -53,31 +53,23 @@ class HomeAssistant:
             "entity_id": "script.deer",
             "variables": {"location": location},
         }
-        r = requests.post(
-            f"{self.api}services/script/turn_on", json=json, headers=self.headers
-        )
+        r = requests.post(f"{self.api}services/script/turn_on", json=json, headers=self.headers)
         log.info(f"Deer alert={r}")
 
     def get_device(self, name: str) -> Any:
         try:
             return self.devices[name.lower()]
         except KeyError:
-            raise KeyError('No such device "{}"'.format(name))
+            raise KeyError(f'No such device "{name}"')
 
     def get_state(self, entity: str) -> bool:
         try:
-            response = requests.get(
-                f"{self.api}states/{entity}", headers=self.headers
-            ).json()
+            response = requests.get(f"{self.api}states/{entity}", headers=self.headers).json()
             self.cache[entity] = response
         except requests.exceptions.ConnectionError:
             if entity not in self.cache:
-                raise RuntimeError(
-                    f"Failed to fetch {self.api}states/{entity} and no cached response available"
-                )
-            log.warning(
-                f"Failed to fetch {self.api}states/{entity}. Using cached response"
-            )
+                raise RuntimeError(f"Failed to fetch {self.api}states/{entity} and no cached response available")
+            log.warning(f"Failed to fetch {self.api}states/{entity}. Using cached response")
             response = self.cache[entity]
         if "state" in response:
             return response["state"] == "on"
@@ -114,9 +106,7 @@ class HomeAssistant:
         return self.get_state("binary_sensor.konnected_198e05_zone_5")
 
     def get_presence(self, person: str) -> bool:
-        response = requests.get(
-            f"{self.api}states/{person}", headers=self.headers
-        ).json()
+        response = requests.get(f"{self.api}states/{person}", headers=self.headers).json()
         return response["state"] == "home"
 
     def should_notify_vehicle(self) -> bool:
@@ -130,7 +120,7 @@ class HomeAssistant:
 
     def echo_speaks(self, message: str) -> Any:
         if self.get_presence("group.egge"):
-            log.info("Speaking {}".format(message))
+            log.info(f"Speaking {message}")
             json = {"message": message, "data": {"type": "tts"}}
             r = requests.post(
                 f"{self.api}services/notify/alexa_media_kitchen_ecobee4",
@@ -139,7 +129,7 @@ class HomeAssistant:
             )
             return r.content.decode("utf-8")
         else:
-            log.info("Not speaking {}".format(message))
+            log.info(f"Not speaking {message}")
             return True
 
     def mode(self) -> str:
@@ -153,15 +143,11 @@ class HomeAssistant:
     def is_dog_inside(self) -> bool:
         entity = "sensor.rufus_status"
         try:
-            response = requests.get(
-                f"{self.api}states/{entity}", headers=self.headers
-            ).json()
+            response = requests.get(f"{self.api}states/{entity}", headers=self.headers).json()
             self.cache[entity] = response
         except requests.exceptions.ConnectionError:
             if entity not in self.cache:
-                raise RuntimeError(
-                    f"Failed to fetch {entity} and no cached response available"
-                )
+                raise RuntimeError(f"Failed to fetch {entity} and no cached response available")
             log.warning(f"Failed to fetch {entity}. Using cached response")
             response = self.cache[entity]
         return response.get("state") == "inside"
@@ -191,8 +177,7 @@ class HomeAssistant:
     def house_cleaners_arrived(self) -> None:
         if (
             self.last_house_cleaners_arrived is None
-            or datetime.datetime.now() - self.last_house_cleaners_arrived
-            > datetime.timedelta(days=1)
+            or datetime.datetime.now() - self.last_house_cleaners_arrived > datetime.timedelta(days=1)
         ):
             r = requests.post(
                 f"{self.api}services/script/turn_on",
@@ -202,4 +187,4 @@ class HomeAssistant:
             log.info(f"Run script house cleaners arrive={r}")
             self.last_house_cleaners_arrived = datetime.datetime.now()
         else:
-            log.info(f"House cleaners last arrrived {self.last_house_cleaners_arrived}")
+            log.info(f"House cleaners last arrived {self.last_house_cleaners_arrived}")

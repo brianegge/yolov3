@@ -2,7 +2,10 @@
 
 set -o errexit
 
-script_dir=$(cd $(dirname $0); pwd)
+script_dir=$(
+  cd $(dirname $0)
+  pwd
+)
 cd $script_dir
 model_source=/home/egge/detector/models
 # model_source=/home/egge/gdrive/dev/packages
@@ -15,8 +18,7 @@ onnx=/home/egge/detector/simplescan/vehicles_yolov4.onnx
 source /home/egge/detector/bin/activate
 PYTHONPATH=/home/egge/github/pytorch-YOLOv4
 #768_1344
-if [[ "$weights" -nt "$onnx" ]]
-then
+if [[ "$weights" -nt "$onnx" ]]; then
   echo "Updating $onnx"
   python3 ./darknet2onnx.py $cfg $weights $onnx
   sudo systemctl stop aicam
@@ -31,8 +33,7 @@ weights=${model_source}/ipcams-yolov4-608-3-tiny-detector_best.weights
 labels=/${model_source}/ipcams.names
 onnx=/home/egge/detector/simplescan/ipcams_color_yolov4.onnx
 
-if [[ "$weights" -nt "$onnx" ]]
-then
+if [[ "$weights" -nt "$onnx" ]]; then
   echo "Updating $onnx"
   python3 ./darknet2onnx.py $cfg $weights $onnx
   sudo systemctl stop aicam
@@ -45,8 +46,7 @@ fi
 cfg=${model_source}/ipcams-yolov4-608-1-tiny-detector.cfg
 weights=${model_source}/ipcams-yolov4-608-1-tiny-detector_best.weights
 onnx=/home/egge/detector/simplescan/ipcams_grey_yolov4.onnx
-if [[ "$weights" -nt "$onnx" ]]
-then
+if [[ "$weights" -nt "$onnx" ]]; then
   echo "Updating $onnx"
   sudo systemctl stop aicam
   python3 ./darknet2onnx.py $cfg $weights $onnx

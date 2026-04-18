@@ -6,11 +6,10 @@ from datetime import date, datetime
 from io import BytesIO
 from pprint import pformat
 
+import codeproject
 import cv2
 import requests
 from PIL import Image
-
-import codeproject
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ _plate_variants = {}
 
 
 def _edits1(word):
-    "All edits that are one edit away from `word`."
+    """All edits that are one edit away from `word`."""
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
     deletes = [L + R[1:] for L, R in splits if R]
@@ -50,8 +49,8 @@ def _load_license_plates():
 def _match_plate(plate):
     """Find the best matching known plate within edit distance 2.
 
-    Checks: exact match, then edits1(query) against pre-computed edits1(known).
-    edits1(query) ∩ edits1(known) covers all pairs within edit distance 2.
+    Checks: exact match, then edits1(query) against pre-computed edits1(known). edits1(query) ∩ edits1(known) covers all
+    pairs within edit distance 2.
     """
     # Distance 0 or 1: query itself may be in the pre-expanded variants
     if plate in _plate_variants:
@@ -65,7 +64,7 @@ def _match_plate(plate):
 
 def notify(cam, message, image, predictions, config, ha, model_name="color", original_image=None):
     mode = ha.mode()
-    mode_key = "priority-%s" % mode
+    mode_key = f"priority-{mode}"
     if mode_key in config:
         mode_priorities = config[mode_key]
     else:
@@ -73,17 +72,14 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
     priorities = config["priority"]
     priority = None
     has_dog = False
-    vehicles = list(
-        filter(lambda p: p["tagName"] == "vehicle" and "ignore" not in p, predictions)
-    )
+    vehicles = list(filter(lambda p: p["tagName"] == "vehicle" and "ignore" not in p, predictions))
     has_vehicles = len(vehicles) > 0
     has_visible_vehicles = len(
         list(
             filter(
-                lambda p: p["tagName"] == "vehicle"
-                and "ignore" not in p
-                and "departed" not in p
-                and p["age"] < 3,  # Run ALPR on first 3 frames to catch plates that become visible
+                lambda p: (
+                    p["tagName"] == "vehicle" and "ignore" not in p and "departed" not in p and p["age"] < 3
+                ),  # Run ALPR on first 3 frames to catch plates that become visible
                 predictions,
             )
         )
@@ -96,16 +92,10 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
     )
     has_person = len(people) > 0
     has_dog = len(list(filter(lambda p: p["tagName"] == "dog", predictions))) > 0
-    has_person_road = (
-        len(list(filter(lambda p: p["tagName"] == "person_road", predictions))) > 0
-    )
-    has_dog_road = (
-        len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
-    )
+    has_person_road = len(list(filter(lambda p: p["tagName"] == "person_road", predictions))) > 0
+    has_dog_road = len(list(filter(lambda p: p["tagName"] == "dog_road", predictions))) > 0
     dog_inside = ha.is_dog_inside() if (has_dog or has_dog_road) else False
-    packages = list(
-        filter(lambda p: p["tagName"] == "package" and "departed" not in p, predictions)
-    )
+    packages = list(filter(lambda p: p["tagName"] == "package" and "departed" not in p, predictions))
     has_package = len(packages) > 0
     if has_vehicles and cam.name != "mailbox":
         notify_vehicle = ha.should_notify_vehicle()
@@ -184,7 +174,7 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
             i_type = mode_key
         elif tagName in priorities:
             i = priorities.getint(p["tagName"])
-            i_type = "class {}".format(tagName)
+            i_type = f"class {tagName}"
         else:
             i_type = "default"
             i = 0
@@ -198,13 +188,7 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
         # if tagName == "dog" and (p["camName"] == "deck") and probability < 0.9:
         #    i = 0
         #    i_type = "maybe dog rule"
-        if (
-            tagName == "dog"
-            and (p["camName"] == "garage")
-            and probability > 0.9
-            and not has_person
-            and dog_inside
-        ):
+        if tagName == "dog" and (p["camName"] == "garage") and probability > 0.9 and not has_person and dog_inside:
             i = 1
             i_type = "dog in garage rule"
         # elif tagName == "dog" and p["camName"] == "deck" and i > -3:
@@ -239,21 +223,9 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
     # crop to area of interest
     width, height = image.size
     left = min(p["boundingBox"]["left"] - 0.05 for p in predictions) * width
-    right = (
-        max(
-            p["boundingBox"]["left"] + p["boundingBox"]["width"] + 0.05
-            for p in predictions
-        )
-        * width
-    )
+    right = max(p["boundingBox"]["left"] + p["boundingBox"]["width"] + 0.05 for p in predictions) * width
     top = min(p["boundingBox"]["top"] - 0.05 for p in predictions) * height
-    bottom = (
-        max(
-            p["boundingBox"]["top"] + p["boundingBox"]["height"] + 0.05
-            for p in predictions
-        )
-        * height
-    )
+    bottom = max(p["boundingBox"]["top"] + p["boundingBox"]["height"] + 0.05 for p in predictions) * height
     center_x = left + (right - left) / 2
     center_y = top + (bottom - top) / 2
     show_width = max(width / 4, right - left)
@@ -281,26 +253,16 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
         left = max(0, min(p["boundingBox"]["left"] - 0.05 for p in vehicles) * width)
         right = min(
             width,
-            max(
-                p["boundingBox"]["left"] + p["boundingBox"]["width"] + 0.05
-                for p in vehicles
-            )
-            * width,
+            max(p["boundingBox"]["left"] + p["boundingBox"]["width"] + 0.05 for p in vehicles) * width,
         )
         top = max(0, min(p["boundingBox"]["top"] - 0.05 for p in vehicles) * height)
         bottom = min(
             height,
-            max(
-                p["boundingBox"]["top"] + p["boundingBox"]["height"] + 0.05
-                for p in vehicles
-            )
-            * height,
+            max(p["boundingBox"]["top"] + p["boundingBox"]["height"] + 0.05 for p in vehicles) * height,
         )
         crop_rectangle = (left, top, right, bottom)
         vehicle_image = image.crop(crop_rectangle)
-        save_dir = os.path.join(
-            config["detector"]["save-path"], date.today().strftime("%Y%m%d")
-        )
+        save_dir = os.path.join(config["detector"]["save-path"], date.today().strftime("%Y%m%d"))
         save_vehicle = os.path.join(
             save_dir,
             datetime.now().strftime("%H%M%S")
@@ -349,11 +311,7 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
                     else:
                         vehicle_message += "vehicle"
                     if r.get("announce", True) is False:
-                        logging.info(
-                            "Ignoring {}'s vehicle with plate {}".format(
-                                r["owner"], plate
-                            )
-                        )
+                        logging.info("Ignoring {}'s vehicle with plate {}".format(r["owner"], plate))
                         vehicle_message = None
                 if vehicle_message is not None:
                     if vehicle_message == "":
@@ -419,15 +377,17 @@ def notify(cam, message, image, predictions, config, ha, model_name="color", ori
                 review_dir = os.path.join(config["detector"]["save-path"], "review")
                 os.makedirs(review_dir, exist_ok=True)
                 review_id = uuid.uuid4().hex[:8]
-                review_file = "%s.jpg" % review_id
+                review_file = f"{review_id}.jpg"
                 review_image = original_image if original_image is not None else image
                 if not isinstance(review_image, Image.Image):
                     review_image = Image.fromarray(cv2.cvtColor(review_image, cv2.COLOR_BGR2RGB))
                 review_image.save(os.path.join(review_dir, review_file))
                 webhook_url = config["roboflow"]["webhook-url"]
                 detection_tags = set(p["tagName"] for p in predictions if "ignore" not in p)
-                pushover_data["url"] = "%s?file=%s&model=%s&cam=%s&tags=%s" % (
-                    webhook_url, review_file, model_name,
+                pushover_data["url"] = "{}?file={}&model={}&cam={}&tags={}".format(
+                    webhook_url,
+                    review_file,
+                    model_name,
                     cam.name.replace(" ", "_"),
                     ",".join(sorted(detection_tags)),
                 )

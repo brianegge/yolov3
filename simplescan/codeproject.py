@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CodeProject AI Server ALPR integration."""
+
 import json
 import logging
 import sys
@@ -13,8 +14,7 @@ DEFAULT_CODEPROJECT_URL = "http://localhost:32168/v1/image/alpr"
 
 
 def enrich(image_bytes, save_json=None, url=None):
-    """
-    Send image to CodeProject AI ALPR and extract license plate info.
+    """Send image to CodeProject AI ALPR and extract license plate info.
 
     Args:
         image_bytes: Raw image bytes

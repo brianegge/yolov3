@@ -22,19 +22,19 @@ Cameras can define a `road_line` in `config.txt` to classify detections near pub
 
 Per-camera `road_line` key in `config.txt`:
 
-| Format | Meaning | Example |
-|--------|---------|---------|
+| Format              | Meaning                        | Example          |
+| ------------------- | ------------------------------ | ---------------- |
 | `x1:y1, x2:y2, ...` | Piecewise linear road boundary | `0:0.5, 1.0:0.2` |
-| `all` | Entire frame is road | `all` |
-| *(omitted)* | No road classification | |
+| `all`               | Entire frame is road           | `all`            |
+| _(omitted)_         | No road classification         |                  |
 
 Current cameras with road lines:
 
-| Camera | Config | Effect |
-|--------|--------|--------|
-| **driveway** | `road_line = 0:0.5, 1.0:0.2` | Diagonal line, objects above are `_road` |
-| **peach tree** | `road_line = 0:0.31, 0.651:0.348, 1.0:0.479` | 3-point piecewise line |
-| **mailbox** | `road_line = all` | All detections are `_road` variants |
+| Camera         | Config                                       | Effect                                   |
+| -------------- | -------------------------------------------- | ---------------------------------------- |
+| **driveway**   | `road_line = 0:0.5, 1.0:0.2`                 | Diagonal line, objects above are `_road` |
+| **peach tree** | `road_line = 0:0.31, 0.651:0.348, 1.0:0.479` | 3-point piecewise line                   |
+| **mailbox**    | `road_line = all`                            | All detections are `_road` variants      |
 
 The `Camera.road_y_at(x)` method interpolates the road line at any x position.
 
@@ -62,14 +62,14 @@ On unexpected MQTT disconnect (e.g. Home Assistant restart), the client automati
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Entry point, camera polling loop, MQTT setup |
-| `detect.py` | Object detection, road classification, exclusion zones |
-| `notify.py` | Notification logic (Pushover, Home Assistant) |
-| `camera.py` | Camera capture, MQTT publishing, road line parsing |
-| `homeassistant.py` | Home Assistant API integration |
-| `codeproject.py` | CodeProject AI ALPR integration |
-| `config.txt` | Per-deployment configuration (not in repo) |
-| `config-test.txt` | Test configuration with mock values |
-| `excludes.json` | Static bounding box exclusion zones |
+| File               | Purpose                                                |
+| ------------------ | ------------------------------------------------------ |
+| `main.py`          | Entry point, camera polling loop, MQTT setup           |
+| `detect.py`        | Object detection, road classification, exclusion zones |
+| `notify.py`        | Notification logic (Pushover, Home Assistant)          |
+| `camera.py`        | Camera capture, MQTT publishing, road line parsing     |
+| `homeassistant.py` | Home Assistant API integration                         |
+| `codeproject.py`   | CodeProject AI ALPR integration                        |
+| `config.txt`       | Per-deployment configuration (not in repo)             |
+| `config-test.txt`  | Test configuration with mock values                    |
+| `excludes.json`    | Static bounding box exclusion zones                    |

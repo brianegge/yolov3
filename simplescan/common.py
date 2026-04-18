@@ -52,6 +52,7 @@ import os
 
 # import pycuda.autoinit
 import pycuda.driver as cuda
+
 import tensorrt as trt
 
 try:
@@ -68,17 +69,12 @@ def GiB(val):
 
 
 def add_help(description):
-    parser = argparse.ArgumentParser(
-        description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    args, _ = parser.parse_known_args()
+    parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    _args, _ = parser.parse_known_args()
 
 
-def find_sample_data(
-    description="Runs a TensorRT Python sample", subfolder="", find_files=[]
-):
-    """
-    Parses sample arguments.
+def find_sample_data(description="Runs a TensorRT Python sample", subfolder="", find_files=[]):
+    """Parses sample arguments.
 
     Args:
         description (str): Description of the sample.
@@ -88,12 +84,9 @@ def find_sample_data(
     Returns:
         str: Path of data directory.
     """
-
     # Standard command-line arguments for all samples.
     kDEFAULT_DATA_ROOT = os.path.join(os.sep, "usr", "src", "tensorrt", "data")
-    parser = argparse.ArgumentParser(
-        description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "-d",
         "--datadir",
@@ -107,21 +100,11 @@ def find_sample_data(
         # If the subfolder exists, append it to the path, otherwise use the provided path as-is.
         data_path = os.path.join(data_dir, subfolder)
         if not os.path.exists(data_path):
-            print(
-                "WARNING: "
-                + data_path
-                + " does not exist. Trying "
-                + data_dir
-                + " instead."
-            )
+            print("WARNING: " + data_path + " does not exist. Trying " + data_dir + " instead.")
             data_path = data_dir
         # Make sure data directory exists.
         if not (os.path.exists(data_path)):
-            print(
-                "WARNING: {:} does not exist. Please provide the correct data path with the -d option.".format(
-                    data_path
-                )
-            )
+            print(f"WARNING: {data_path} does not exist. Please provide the correct data path with the -d option.")
         return data_path
 
     data_paths = [get_data_path(data_dir) for data_dir in args.datadir]
@@ -129,9 +112,8 @@ def find_sample_data(
 
 
 def locate_files(data_paths, filenames):
-    """
-    Locates the specified files in the specified data directories.
-    If a file exists in multiple data directories, the first directory is used.
+    """Locates the specified files in the specified data directories. If a file exists in multiple data directories, the
+    first directory is used.
 
     Args:
         data_paths (List[str]): The data directories.
@@ -155,16 +137,12 @@ def locate_files(data_paths, filenames):
     # Check that all files were found
     for f, filename in zip(found_files, filenames):
         if not f or not os.path.exists(f):
-            raise FileNotFoundError(
-                "Could not find {:}. Searched in data paths: {:}".format(
-                    filename, data_paths
-                )
-            )
+            raise FileNotFoundError(f"Could not find {filename}. Searched in data paths: {data_paths}")
     return found_files
 
 
 # Simple helper data class that's a little nicer to use than a 2-tuple.
-class HostDeviceMem(object):
+class HostDeviceMem:
     def __init__(self, host_mem, device_mem):
         self.host = host_mem
         self.device = device_mem
@@ -183,7 +161,6 @@ def allocate_buffers(engine, batch_size=1):
     bindings = []
     stream = cuda.Stream()
     for binding in engine:
-
         size = trt.volume(engine.get_binding_shape(binding)) * batch_size
         dims = engine.get_binding_shape(binding)
 
@@ -211,9 +188,7 @@ def do_inference(context, bindings, inputs, outputs, stream, batch_size=1):
     # Transfer input data to the GPU.
     [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
     # Run inference.
-    context.execute_async(
-        batch_size=batch_size, bindings=bindings, stream_handle=stream.handle
-    )
+    context.execute_async(batch_size=batch_size, bindings=bindings, stream_handle=stream.handle)
     # Transfer predictions back from the GPU.
     [cuda.memcpy_dtoh_async(out.host, out.device, stream) for out in outputs]
     # Synchronize the stream

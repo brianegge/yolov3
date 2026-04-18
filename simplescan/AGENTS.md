@@ -78,6 +78,7 @@ ssh egge@egge-nano.home "ssh-keygen -R \$(ssh -T git@github.com 2>&1 | grep -oP 
 Config file location: `egge@egge-nano:~/detector/simplescan/config.txt`
 
 Key sections:
+
 - `[mqtt]` - MQTT broker credentials
 - `[homeassistant]` - Home Assistant API URL and token
 - `[pushover]` - Pushover notification credentials

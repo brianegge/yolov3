@@ -4,17 +4,14 @@ import tempfile
 import numpy as np
 import onnx
 import onnxruntime
-
 from object_detection import ObjectDetection
 
 
 class ONNXRuntimeObjectDetection(ObjectDetection):
-    """Object Detection class for ONNX Runtime"""
+    """Object Detection class for ONNX Runtime."""
 
     def __init__(self, model_filename, labels, prob_threshold=0.10, scale=4):
-        super(ONNXRuntimeObjectDetection, self).__init__(
-            labels, prob_threshold=prob_threshold, scale=scale
-        )
+        super().__init__(labels, prob_threshold=prob_threshold, scale=scale)
         model = onnx.load(model_filename)
         with tempfile.TemporaryDirectory() as dirpath:
             temp = os.path.join(dirpath, os.path.basename(model_filename))
@@ -26,9 +23,7 @@ class ONNXRuntimeObjectDetection(ObjectDetection):
         self.is_fp16 = self.session.get_inputs()[0].type == "tensor(float16)"
 
     def predict(self, preprocessed_image):
-        inputs = np.array(preprocessed_image, dtype=np.float32)[
-            np.newaxis, :, :, (2, 1, 0)
-        ]  # RGB -> BGR
+        inputs = np.array(preprocessed_image, dtype=np.float32)[np.newaxis, :, :, (2, 1, 0)]  # RGB -> BGR
         inputs = np.ascontiguousarray(np.rollaxis(inputs, 3, 1))
 
         if self.is_fp16:

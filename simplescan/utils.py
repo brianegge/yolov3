@@ -14,13 +14,11 @@ def draw_bbox(image, p, color, label=None, width=4):
     rect_start = (w * bbox["left"], h * bbox["top"])
     rect_end = (w * (bbox["left"] + bbox["width"]), h * (bbox["top"] + bbox["height"]))
     draw = ImageDraw.Draw(image, "RGBA")
-    outline = ImageColor.getrgb(color) + (128,)
+    outline = (*ImageColor.getrgb(color), 128)
     draw.rectangle((rect_start, rect_end), outline=outline, width=width)
     if label:
         font = ImageFont.truetype("arial.ttf", size=52)
-        draw.text(
-            (w * bbox["left"], h * bbox["top"] - 52), text=label, fill=color, font=font
-        )
+        draw.text((w * bbox["left"], h * bbox["top"] - 52), text=label, fill=color, font=font)
     del draw
 
 
@@ -28,7 +26,7 @@ def draw_road(image, points):
     w, h = image.size
     xy = list(map(lambda t: (t[0] * w, t[1] * h), points))
     draw = ImageDraw.Draw(image, "RGBA")
-    fill = ImageColor.getrgb("yellow") + (128,)
+    fill = (*ImageColor.getrgb("yellow"), 128)
     draw.line(xy, fill=fill, width=4)
     del draw
 
@@ -48,7 +46,7 @@ def bb_intersection_over_union(boxA, boxB):
         boxBArea = (boxB["width"]) * (boxB["height"])
         # compute the intersection over union by taking the intersection
         # area and dividing it by the sum of prediction + ground-truth
-        # areas - the interesection area
+        # areas - the intersection area
         denominator = boxAArea + boxBArea - interArea
         if denominator == 0:
             return 0.0
@@ -69,7 +67,7 @@ def bb_intersection_over_union(boxA, boxB):
         boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
         # compute the intersection over union by taking the intersection
         # area and dividing it by the sum of prediction + ground-truth
-        # areas - the interesection area
+        # areas - the intersection area
         denominator = boxAArea + boxBArea - interArea
         if denominator == 0:
             return 0.0
@@ -85,11 +83,11 @@ def cleanup(directory_name, children_only=True):
         return
     try:
         for item in directory.iterdir():
-            (base, ext) = os.path.splitext(str(item))
+            (_base, ext) = os.path.splitext(str(item))
             if item.is_dir():
                 cleanup(item, children_only=False)
             elif ext in [".jpg"]:
-                log.debug("Not removing image {}".format(item))
+                log.debug(f"Not removing image {item}")
             else:
                 item.unlink()
         if next(directory.iterdir(), None) is None and children_only is False:

@@ -1,14 +1,13 @@
 #!/bin/bash
 
-for f in "$@"
-do
+for f in "$@"; do
   base=$(basename "$f")
   output=$(dirname "$f")/$(basename "$f" .jpg).xml
   size=$(file "$f" | grep -Eo "[0-9]{2,}x[0-9]+")
   width=$(echo $size | cut -dx -f1)
   height=$(echo $size | cut -dx -f2)
   echo $f=$output
-  cat > "$output" <<EOF
+  cat > "$output" << EOF
 <annotation>
 	<folder></folder>
 	<filename>${base}</filename>

@@ -2,13 +2,13 @@ import atexit
 import logging
 import os
 
+import common
 import numpy as np
 import pycuda.driver as cuda
-import tensorrt as trt
+from object_detection import ObjectDetection
 from PIL import Image
 
-import common
-from object_detection import ObjectDetection
+import tensorrt as trt
 
 TRT_LOGGER = trt.Logger()
 logger = logging.getLogger(__name__)
@@ -34,14 +34,10 @@ atexit.register(_cleanup_cuda)
 
 
 class ONNXTensorRTv4ObjectDetection(ObjectDetection):
-    """Object Detection class for ONNX Runtime"""
+    """Object Detection class for ONNX Runtime."""
 
-    def __init__(
-        self, config, labels
-    ):  # , prob_threshold=0.10, model_height=768, model_width=1344, channels=3):
-        super(ONNXTensorRTv4ObjectDetection, self).__init__(
-            labels, float(config.get("prob_threshold"))
-        )
+    def __init__(self, config, labels):  # , prob_threshold=0.10, model_height=768, model_width=1344, channels=3):
+        super().__init__(labels, float(config.get("prob_threshold")))
         self.model_width = int(config.get("width"))
         self.model_height = int(config.get("height"))
         self.channels = int(config.get("channels"))
@@ -50,26 +46,18 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         # Use shared CUDA context
         self.cfx = _cuda_context
         """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
-        if os.path.exists(engine_file_path) and os.path.getctime(
-            engine_file_path
-        ) > os.path.getctime(model_filename):
+        if os.path.exists(engine_file_path) and os.path.getctime(engine_file_path) > os.path.getctime(model_filename):
             # If a serialized engine exists, use it instead of building an engine.
-            logger.info(
-                "Reading engine from file {} for classes {}".format(
-                    engine_file_path, ",".join(labels)
-                )
-            )
+            logger.info("Reading engine from file {} for classes {}".format(engine_file_path, ",".join(labels)))
             with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
                 self.engine = runtime.deserialize_cuda_engine(f.read())
         else:
-            logger.info("Compiling model {}".format(os.path.basename(model_filename)))
+            logger.info(f"Compiling model {os.path.basename(model_filename)}")
             self.engine = self.get_engine(model_filename, engine_file_path)
         self.is_fp16 = False  # network.get_input(0).type == 'tensor(float16)'
         self.input_name = "input"  # network.get_input(0).name
         self.context = self.engine.create_execution_context()
-        self.context.set_binding_shape(
-            0, (1, self.channels, self.model_height, self.model_width)
-        )
+        self.context.set_binding_shape(0, (1, self.channels, self.model_height, self.model_width))
 
     def __del__(self):
         # Clean up TensorRT resources; shared CUDA context is cleaned up at exit
@@ -80,7 +68,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             pass  # Already cleaned up or context invalid
 
     def get_engine(self, onnx_file_path, engine_file_path):
-        """Takes an ONNX file and creates a TensorRT engine to run inference with"""
+        """Takes an ONNX file and creates a TensorRT engine to run inference with."""
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network(
             common.EXPLICIT_BATCH
         ) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
@@ -91,12 +79,10 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             # Parse model file
             if not os.path.exists(onnx_file_path):
                 logger.warning(
-                    "ONNX file {} not found, please run yolov3_to_onnx.py first to generate it.".format(
-                        onnx_file_path
-                    )
+                    f"ONNX file {onnx_file_path} not found, please run yolov3_to_onnx.py first to generate it."
                 )
                 exit(0)
-            logger.info("Loading ONNX file from path {}...".format(onnx_file_path))
+            logger.info(f"Loading ONNX file from path {onnx_file_path}...")
             with open(onnx_file_path, "rb") as model:
                 logger.info("Beginning ONNX file parsing")
                 if not parser.parse(model.read()):
@@ -104,11 +90,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                     for error in range(parser.num_errors):
                         logger.error(parser.get_error(error))
                     return None
-            logger.info(
-                "Creating model with shape {},{},{}".format(
-                    self.channels, self.model_height, self.model_width
-                )
-            )
+            logger.info(f"Creating model with shape {self.channels},{self.model_height},{self.model_width}")
             network.get_input(0).shape = [
                 1,
                 self.channels,
@@ -116,11 +98,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                 self.model_width,
             ]  # NCWH
             logger.info("Completed parsing of ONNX file")
-            logger.info(
-                "Building an engine from file {}; this may take a while...".format(
-                    onnx_file_path
-                )
-            )
+            logger.info(f"Building an engine from file {onnx_file_path}; this may take a while...")
             plan = builder.build_serialized_network(network, config)
             with trt.Runtime(TRT_LOGGER) as runtime:
                 engine = runtime.deserialize_cuda_engine(plan)
@@ -137,14 +115,8 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
         # img_in = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         if isinstance(image, Image.Image):
             if image.size != (self.model_width, self.model_height):
-                logger.debug(
-                    "Resizing from {} to {}".format(
-                        image.size, (self.model_width, self.model_height)
-                    )
-                )
-                image = image.resize(
-                    (self.model_width, self.model_height), Image.BILINEAR
-                )
+                logger.debug(f"Resizing from {image.size} to {(self.model_width, self.model_height)}")
+                image = image.resize((self.model_width, self.model_height), Image.BILINEAR)
         img_in = np.array(image)
         if self.channels == 3:
             # channels first
@@ -208,12 +180,8 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
                 "boundingBox": {
                     "left": round(float(selected_boxes[i][0]), 8),
                     "top": round(float(selected_boxes[i][1]), 8),
-                    "width": round(
-                        float(selected_boxes[i][2]) - float(selected_boxes[i][0]), 8
-                    ),
-                    "height": round(
-                        float(selected_boxes[i][3]) - float(selected_boxes[i][1]), 8
-                    ),
+                    "width": round(float(selected_boxes[i][2]) - float(selected_boxes[i][0]), 8),
+                    "height": round(float(selected_boxes[i][3]) - float(selected_boxes[i][1]), 8),
                 },
             }
             for i in range(len(selected_boxes))
@@ -248,7 +216,6 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
 
         bboxes_batch = []
         for i in range(box_array.shape[0]):
-
             argwhere = max_conf[i] > conf_thresh
             l_box_array = box_array[i, argwhere, :]
             l_max_conf = max_conf[i, argwhere]
@@ -257,7 +224,6 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
             bboxes = []
             # nms for each class
             for j in range(num_classes):
-
                 cls_argwhere = l_max_id == j
                 ll_box_array = l_box_array[cls_argwhere, :]
                 ll_max_conf = l_max_conf[cls_argwhere]
@@ -285,9 +251,7 @@ class ONNXTensorRTv4ObjectDetection(ObjectDetection):
 
             bboxes_batch.append(bboxes)
 
-        assert (
-            len(bboxes_batch) == 1
-        ), "We only expect to be doing one batch at a time now"
+        assert len(bboxes_batch) == 1, "We only expect to be doing one batch at a time now"
 
         return bboxes_batch[0]
 
