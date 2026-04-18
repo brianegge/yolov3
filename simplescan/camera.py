@@ -82,9 +82,7 @@ class Camera:
         if self.ftp_path:
             img = None
             try:
-                files = sorted(
-                    Path(self.ftp_path).glob("**/*.jpg"), key=os.path.getmtime
-                )
+                files = sorted(Path(self.ftp_path).glob("**/*.jpg"), key=os.path.getmtime)
                 if len(files) == 0:
                     cleanup(self.ftp_path)
                     return None
@@ -93,9 +91,7 @@ class Camera:
                 return None
             good_files = []
             for f in files:
-                if datetime.fromtimestamp(
-                    os.path.getmtime(f)
-                ) < datetime.now() - timedelta(minutes=5):
+                if datetime.fromtimestamp(os.path.getmtime(f)) < datetime.now() - timedelta(minutes=5):
                     logger.warning(f"Skipping old file {f}")
                     os.remove(f)
                     continue
@@ -131,7 +127,7 @@ class Camera:
         self.resized = None
         self.resized2 = None
         if self.skip > 0:
-            self.error = "skip={}".format(self.skip)
+            self.error = f"skip={self.skip}"
             self.skip -= 1
             return self
         if "file" in self.config:
@@ -144,13 +140,9 @@ class Camera:
             if self.session is None:
                 self.session = requests.Session()
                 if "user" in self.config:
-                    self.session.auth = HTTPDigestAuth(
-                        self.config["user"], self.config["password"]
-                    )
+                    self.session.auth = HTTPDigestAuth(self.config["user"], self.config["password"])
             try:
-                with self.session.get(
-                    self.config["uri"], timeout=20, stream=True
-                ) as resp:
+                with self.session.get(self.config["uri"], timeout=20, stream=True) as resp:
                     resp.raise_for_status()
                     bytes = np.asarray(bytearray(resp.raw.read()), dtype="uint8")
                     if len(bytes) == 0:
@@ -167,7 +159,7 @@ class Camera:
                 self.image_hash = 0
                 self.source = None
                 self.resized = None
-                self.skip = 2 ** self.fails
+                self.skip = 2**self.fails
                 self.fails += 1
                 self.session = None
                 self.error = sys.exc_info()[0]
@@ -178,16 +170,10 @@ class Camera:
 
     def reboot(self):
         # "http://treeline-cam.home/cgi-bin/magicBox.cgi?action=reboot"
-        url = (
-            urlparse(self.config["uri"])
-            ._replace(path="/cgi-bin/magicBox.cgi", query="action=reboot")
-            .geturl()
-        )
+        url = urlparse(self.config["uri"])._replace(path="/cgi-bin/magicBox.cgi", query="action=reboot").geturl()
         logger.info(f"Rebooting {self.name}: {url}")
         try:
-            r = requests.get(
-                url, auth=HTTPDigestAuth(self.config["user"], self.config["password"])
-            )
+            r = requests.get(url, auth=HTTPDigestAuth(self.config["user"], self.config["password"]))
             r.raise_for_status()
         except Exception:
             logger.exception("Failed to reboot %s", self.name)
@@ -198,9 +184,7 @@ class Camera:
         hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
         sum = np.sum(hsv[:, :, 0])
         if sum == 0:
-            self.resized2 = cv2.resize(
-                cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB), (608, 608)
-            )
+            self.resized2 = cv2.resize(cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB), (608, 608))
             self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
             self.resized = cv2.resize(self.image, (608, 608))
         else:

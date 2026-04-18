@@ -2,15 +2,16 @@
 
 import argparse
 import os
+import subprocess
 from pprint import pprint
 from tempfile import gettempdir
 
 import cv2
 import numpy as np
 from colorhash import ColorHash
+from onnx_object_detection import ONNXRuntimeObjectDetection
 from PIL import Image
 
-from onnx_object_detection import ONNXRuntimeObjectDetection
 from sort import Sort
 from utils import draw_bbox
 
@@ -22,7 +23,7 @@ args = parser.parse_args()
 
 model_dir = "/Users/brianegge/downloads/5229026c5d694c2292f9f326d4b49620.ONNX/"
 # Load labels
-with open(model_dir + "labels.txt", "r") as f:
+with open(model_dir + "labels.txt") as f:
     labels = [line.strip() for line in f.readlines()]
 od_model = ONNXRuntimeObjectDetection(model_dir + "model.onnx", labels)
 
@@ -33,9 +34,7 @@ out_width = 1920 * 2
 out_height = 1080 * 2
 output_tmp = os.path.join(gettempdir(), os.path.basename(args.output[0]))
 print(output_tmp)
-vid_writer = cv2.VideoWriter(
-    output_tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (out_width, out_height)
-)
+vid_writer = cv2.VideoWriter(output_tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (out_width, out_height))
 colors = {
     "dog": "yellow",
     "cat": "orange",
@@ -53,7 +52,7 @@ for path_video in args.input:
     sort = Sort(max_age=30, min_hits=3)
     while img is not None:
         if frame_count % 15 == 0:
-            print("f{:05d}=".format(frame_count), end="")
+            print(f"f{frame_count:05d}=", end="")
             image = Image.fromarray(img.astype("uint8"), "RGB")
             predictions = od_model.predict_image(image)
             predictions = list(filter(lambda p: p["probability"] > 0.6, predictions))
@@ -94,5 +93,7 @@ for path_video in args.input:
         _, img = cap.read()
         frame_count += 1
 vid_writer.release()
-os.system('ffmpeg -y -i "%s" "%s"' % (output_tmp, args.output[0]))
-os.remove(output_tmp)
+try:
+    subprocess.run(["ffmpeg", "-y", "-i", output_tmp, args.output[0]], check=True)
+finally:
+    os.remove(output_tmp)

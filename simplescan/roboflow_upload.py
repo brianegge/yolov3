@@ -6,29 +6,33 @@ referenced image to the Roboflow REST API for model retraining.
 
 Python 3.6 compatible (runs on Jetson Nano).
 """
+
 import argparse
 import base64
+import html
 import json
 import logging
 import os
 import sys
 from configparser import ConfigParser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 try:
+    from urllib.error import HTTPError, URLError
     from urllib.request import Request, urlopen
-    from urllib.error import URLError, HTTPError
 except ImportError:
     pass
 try:
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs, urlencode, urlparse
 except ImportError:
-    from urlparse import urlparse, parse_qs
+    from urllib import urlencode
+
+    from urlparse import parse_qs, urlparse
 
 logger = logging.getLogger("aicam-review")
 
 
-class Config(object):
+class Config:
     def __init__(self, config):
         section = config["roboflow"]
         self.api_key = section["api-key"]
@@ -40,7 +44,7 @@ class Config(object):
         self.projects = {}  # project_id -> set of classes
         for key, value in section.items():
             if key.startswith("project."):
-                project_id = key[len("project."):]
+                project_id = key[len("project.") :]
                 classes = set(c.strip() for c in value.split(","))
                 self.projects[project_id] = classes
         if not self.projects:
@@ -64,28 +68,34 @@ def _do_upload(filename, model, cam, detection_tags):
     filepath = os.path.join(_config.review_dir, filename)
 
     if not os.path.isfile(filepath):
-        return (404, {"error": "file not found: %s" % filename})
+        return (404, {"error": f"file not found: {filename}"})
 
     target_projects = _config.projects_for_tags(detection_tags)
     if not target_projects:
         logger.warning("No project matches tags %s, skipping upload", detection_tags)
-        return (400, {"error": "no project matches tags: %s" % ",".join(sorted(detection_tags))})
+        return (400, {"error": "no project matches tags: {}".format(",".join(sorted(detection_tags)))})
 
     try:
         with open(filepath, "rb") as f:
             image_data = f.read()
-    except IOError as e:
-        return (500, {"error": "failed to read file: %s" % e})
+    except OSError as e:
+        return (500, {"error": f"failed to read file: {e}"})
 
     encoded = base64.b64encode(image_data).decode("utf-8")
     name = os.path.splitext(filename)[0]
-    upload_tags = "%s,%s" % (cam.replace(" ", "_"), model.replace(" ", "_"))
+    upload_tags = "{},{}".format(cam.replace(" ", "_"), model.replace(" ", "_"))
     uploaded = []
 
     for project_id in target_projects:
-        url = "https://api.roboflow.com/dataset/%s/upload?api_key=%s&name=%s&split=train&tag=%s" % (
-            project_id, _config.api_key, name, upload_tags
+        query = urlencode(
+            {
+                "api_key": _config.api_key,
+                "name": name,
+                "split": "train",
+                "tag": upload_tags,
+            }
         )
+        url = f"https://api.roboflow.com/dataset/{project_id}/upload?{query}"
         try:
             req = Request(url, data=encoded.encode("utf-8"), method="POST")
             req.add_header("Content-Type", "application/x-www-form-urlencoded")
@@ -134,30 +144,31 @@ class UploadHandler(BaseHTTPRequestHandler):
 
         if code == 200:
             title = "Image Flagged for Review"
-            body = "<p>Uploaded <b>%s</b> from <b>%s</b> to %s.</p>" % (
-                filename, cam.replace("_", " "),
-                ", ".join(result["projects"]),
+            body = "<p>Uploaded <b>{}</b> from <b>{}</b> to {}.</p>".format(
+                html.escape(filename),
+                html.escape(cam.replace("_", " ")),
+                html.escape(", ".join(result["projects"])),
             )
         else:
             title = "Upload Failed"
-            body = "<p>%s</p>" % result.get("error", "unknown error")
+            body = "<p>{}</p>".format(html.escape(result.get("error", "unknown error")))
 
-        html = (
+        doc = (
             "<!DOCTYPE html><html><head>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>%s</title>"
-            "<style>body{font-family:system-ui,sans-serif;max-width:480px;"
-            "margin:40px auto;padding:0 16px;text-align:center}"
-            ".ok{color:#16a34a}.err{color:#dc2626}</style>"
+            "<title>{}</title>"
+            "<style>body{{font-family:system-ui,sans-serif;max-width:480px;"
+            "margin:40px auto;padding:0 16px;text-align:center}}"
+            ".ok{{color:#16a34a}}.err{{color:#dc2626}}</style>"
             "</head><body>"
-            "<h2 class='%s'>%s</h2>%s"
+            "<h2 class='{}'>{}</h2>{}"
             "</body></html>"
-        ) % ("ok" if code == 200 else "err", title, title, body)
+        ).format(html.escape(title), "ok" if code == 200 else "err", html.escape(title), body)
 
         self.send_response(code)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.wfile.write(html.encode("utf-8"))
+        self.wfile.write(doc.encode("utf-8"))
 
     def do_POST(self):
         if self.path != "/upload":
@@ -172,7 +183,7 @@ class UploadHandler(BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(content_length).decode("utf-8"))
         except (json.JSONDecodeError, ValueError) as e:
-            self._respond(400, {"error": "invalid json: %s" % e})
+            self._respond(400, {"error": f"invalid json: {e}"})
             return
 
         filename = body.get("file")

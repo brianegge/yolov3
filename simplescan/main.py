@@ -19,11 +19,11 @@ from typing import Any, Dict
 import paho.mqtt.client as paho
 import requests
 import sdnotify
-
 from camera import Camera
-from detect import detect
 from homeassistant import HomeAssistant
 from object_detection_rtv4 import ONNXTensorRTv4ObjectDetection
+
+from detect import detect
 from utils import cleanup
 
 log: logging.Logger = logging.getLogger("aicam")
@@ -36,11 +36,15 @@ DEVICE_NAME = "AI Camera Detector"
 
 def get_version() -> str:
     try:
-        return subprocess.check_output(
-            ["git", "describe", "--always", "--dirty"],
-            cwd=os.path.dirname(__file__),
-            stderr=subprocess.DEVNULL,
-        ).decode().strip()
+        return (
+            subprocess.check_output(
+                ["git", "describe", "--always", "--dirty"],
+                cwd=os.path.dirname(__file__),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
     except Exception:
         return "unknown"
 
@@ -56,13 +60,117 @@ def device_info(version: str) -> dict:
 
 
 def on_publish(client: paho.Client, userdata: Any, mid: int) -> None:
-    mlog.debug("on_publish({},{})".format(userdata, mid))
+    mlog.debug(f"on_publish({userdata},{mid})")
+
+
+def publish_discovery(client: paho.Client, ctx: Dict[str, Any]) -> None:
+    """Publish HA MQTT discovery configs and initial retained state.
+
+    Called on every (re)connect so the broker's retained store self-heals after a broker restart or retained-message
+    loss.
+    """
+    cams = ctx["cams"]
+    dev = ctx["dev"]
+    lwt = ctx["lwt"]
+    mqtt_icons = ctx["mqtt_icons"]
+    version = ctx["version"]
+
+    client.publish(
+        f"homeassistant/sensor/{DEVICE_ID}-version/config",
+        json.dumps(
+            {
+                "name": "Version",
+                "state_topic": f"{DEVICE_ID}/version",
+                "uniq_id": f"{DEVICE_ID}-version",
+                "availability_topic": lwt,
+                "icon": "mdi:tag",
+                "entity_category": "diagnostic",
+                "device": dev,
+            }
+        ),
+        retain=True,
+    )
+    client.publish(f"{DEVICE_ID}/version", version, retain=True)
+
+    client.publish(
+        f"homeassistant/sensor/{DEVICE_ID}-status/config",
+        json.dumps(
+            {
+                "name": "Status",
+                "state_topic": f"{DEVICE_ID}/device_status",
+                "uniq_id": f"{DEVICE_ID}-status",
+                "availability_topic": lwt,
+                "icon": "mdi:information-outline",
+                "entity_category": "diagnostic",
+                "device": dev,
+            }
+        ),
+        retain=True,
+    )
+    client.publish(f"{DEVICE_ID}/device_status", "running", retain=True)
+
+    client.publish(
+        f"homeassistant/sensor/{DEVICE_ID}-cameras/config",
+        json.dumps(
+            {
+                "name": "Camera Count",
+                "state_topic": f"{DEVICE_ID}/camera_count",
+                "uniq_id": f"{DEVICE_ID}-cameras",
+                "availability_topic": lwt,
+                "icon": "mdi:camera",
+                "entity_category": "diagnostic",
+                "device": dev,
+            }
+        ),
+        retain=True,
+    )
+    client.publish(f"{DEVICE_ID}/camera_count", len(cams), retain=True)
+
+    for cam in cams:
+        client.publish(
+            f"homeassistant/binary_sensor/show-{cam.ha_name}/config",
+            json.dumps(
+                {
+                    "name": f"Show {cam.name}".title(),
+                    "state_topic": f"{cam.ha_name}/show",
+                    "device_class": "occupancy",
+                    "uniq_id": f"show-{cam.ha_name}",
+                    "availability_topic": lwt,
+                    "native_value": "boolean",
+                    "payload_off": False,
+                    "payload_on": True,
+                    "device": dev,
+                }
+            ),
+            retain=True,
+        )
+        client.publish(f"{cam.ha_name}/show", False, retain=True)
+        for item in cam.mqtt:
+            client.publish(
+                f"homeassistant/sensor/{cam.ha_name}-{item}/config",
+                json.dumps(
+                    {
+                        "name": f"{cam.name} {item} Count".title(),
+                        "state_topic": f"{cam.ha_name}/{item}/count",
+                        "state_class": "measurement",
+                        "uniq_id": f"{cam.ha_name}-{item}",
+                        "availability_topic": lwt,
+                        "icon": mqtt_icons.get(item, f"mdi:{item}"),
+                        "native_value": "int",
+                        "device": dev,
+                    }
+                ),
+                retain=True,
+            )
+            client.publish(f"{cam.ha_name}/{item}/count", 0, retain=True)
 
 
 def on_connect(client: paho.Client, userdata: Any, flags: Dict, rc: int) -> None:
     mlog.info("mqtt connected")
     client._reconnect_deadline = None
     client.publish("aicam/status", "online", retain=True)
+    if userdata is not None:
+        publish_discovery(client, userdata)
 
 
 def on_disconnect(client: paho.Client, userdata: Any, rc: int) -> None:
@@ -73,9 +181,7 @@ def on_disconnect(client: paho.Client, userdata: Any, rc: int) -> None:
     client._reconnect_deadline = time.monotonic() + 300
 
 
-def on_message(
-    self: Any, mqtt_client: paho.Client, obj: Any, msg: paho.MQTTMessage
-) -> None:
+def on_message(self: Any, mqtt_client: paho.Client, obj: Any, msg: paho.MQTTMessage) -> None:
     mlog.info("on_message()")
 
 
@@ -118,11 +224,11 @@ async def main(options: argparse.Namespace) -> None:
     mqtt_client.loop_start()
 
     # Load labels
-    with open(detector_config["labelfile-path"], "r") as f:
+    with open(detector_config["labelfile-path"]) as f:
         labels = [line.strip() for line in f.readlines()]
     vehicle_labels = []
     if "vehicle-labelfile-path" in detector_config:
-        with open(detector_config["vehicle-labelfile-path"], "r") as f:
+        with open(detector_config["vehicle-labelfile-path"]) as f:
             vehicle_labels = [line.strip() for line in f.readlines()]
     # open static exclusion
     excludes = {}
@@ -139,17 +245,13 @@ async def main(options: argparse.Namespace) -> None:
     sd.notify("STATUS=Loading grey model")
     grey_model = ONNXTensorRTv4ObjectDetection(grey_model_config, labels)
     sd.notify("STATUS=Loading vehicle/packages model")
-    vehicle_model = ONNXTensorRTv4ObjectDetection(
-        config["vehicle-model"], vehicle_labels
-    )
+    vehicle_model = ONNXTensorRTv4ObjectDetection(config["vehicle-model"], vehicle_labels)
     sd.notify("STATUS=Loaded models")
 
     cams = []
     i = 0
     while "cam%d" % i in config.sections():
-        cams.append(
-            Camera(config["cam%d" % i], excludes.get(config["cam%d" % i]["name"], {}), mqtt_config)
-        )
+        cams.append(Camera(config["cam%d" % i], excludes.get(config["cam%d" % i]["name"], {}), mqtt_config))
         i += 1
     log.info("Configured %i cams" % i)
     async_cameras = len(list(filter(lambda cam: cam.capture_async, cams)))
@@ -163,95 +265,15 @@ async def main(options: argparse.Namespace) -> None:
     version = get_version()
     dev = device_info(version)
 
-    # Publish device-level diagnostic sensors
-    mqtt_client.publish(
-        f"homeassistant/sensor/{DEVICE_ID}-version/config",
-        json.dumps(
-            {
-                "name": "Version",
-                "state_topic": f"{DEVICE_ID}/version",
-                "uniq_id": f"{DEVICE_ID}-version",
-                "availability_topic": lwt,
-                "icon": "mdi:tag",
-                "entity_category": "diagnostic",
-                "device": dev,
-            }
-        ),
-        retain=True,
-    )
-    mqtt_client.publish(f"{DEVICE_ID}/version", version, retain=True)
-
-    mqtt_client.publish(
-        f"homeassistant/sensor/{DEVICE_ID}-status/config",
-        json.dumps(
-            {
-                "name": "Status",
-                "state_topic": f"{DEVICE_ID}/device_status",
-                "uniq_id": f"{DEVICE_ID}-status",
-                "availability_topic": lwt,
-                "icon": "mdi:information-outline",
-                "entity_category": "diagnostic",
-                "device": dev,
-            }
-        ),
-        retain=True,
-    )
-    mqtt_client.publish(f"{DEVICE_ID}/device_status", "running", retain=True)
-
-    mqtt_client.publish(
-        f"homeassistant/sensor/{DEVICE_ID}-cameras/config",
-        json.dumps(
-            {
-                "name": "Camera Count",
-                "state_topic": f"{DEVICE_ID}/camera_count",
-                "uniq_id": f"{DEVICE_ID}-cameras",
-                "availability_topic": lwt,
-                "icon": "mdi:camera",
-                "entity_category": "diagnostic",
-                "device": dev,
-            }
-        ),
-        retain=True,
-    )
-    mqtt_client.publish(f"{DEVICE_ID}/camera_count", len(cams), retain=True)
-
-    for cam in cams:
-        mqtt_client.publish(
-            f"homeassistant/binary_sensor/show-{cam.ha_name}/config",
-            json.dumps(
-                {
-                    "name": f"Show {cam.name}".title(),
-                    "state_topic": f"{cam.ha_name}/show",
-                    "device_class": "occupancy",
-                    "uniq_id": f"show-{cam.ha_name}",
-                    "availability_topic": lwt,
-                    "native_value": "boolean",
-                    "payload_off": False,
-                    "payload_on": True,
-                    "device": dev,
-                }
-            ),
-            retain=True,
-        )
-        mqtt_client.publish(f"{cam.ha_name}/show", False, retain=True)
-        for item in cam.mqtt:
-            mqtt_client.publish(
-                f"homeassistant/sensor/{cam.ha_name}-{item}/config",
-                json.dumps(
-                    {
-                        "name": f"{cam.name} {item} Count".title(),
-                        "state_topic": f"{cam.ha_name}/{item}/count",
-                        "state_class": "measurement",
-                        "uniq_id": f"{cam.ha_name}-{item}",
-                        "availability_topic": lwt,
-                        "icon": mqtt_icons.get(item, f"mdi:{item}"),
-                        "native_value": "int",
-                        "device": dev,
-                    }
-                ),
-                retain=True,
-            )
-            mqtt_client.publish(f"{cam.ha_name}/{item}/count", 0, retain=True)
+    ctx: Dict[str, Any] = {
+        "cams": cams,
+        "dev": dev,
+        "lwt": lwt,
+        "mqtt_icons": mqtt_icons,
+        "version": version,
+    }
+    mqtt_client.user_data_set(ctx)
+    publish_discovery(mqtt_client, ctx)
 
     sd.notify("READY=1")
     sd.notify("STATUS=Running")
@@ -306,8 +328,7 @@ async def main(options: argparse.Namespace) -> None:
         if count == 0:
             # scan each camera
             for cam in filter(
-                lambda cam: (datetime.now() - cam.prior_time).total_seconds()
-                > cam.interval,
+                lambda cam: (datetime.now() - cam.prior_time).total_seconds() > cam.interval,
                 cams,
             ):
                 try:
@@ -316,9 +337,7 @@ async def main(options: argparse.Namespace) -> None:
                 except KeyboardInterrupt:
                     return
                 except requests.exceptions.ConnectionError:
-                    log.warning(
-                        "cam:%s ConnectionError: %s", cam.name, sys.exc_info()[1]
-                    )
+                    log.warning("cam:%s ConnectionError: %s", cam.name, sys.exc_info()[1])
             if count > 0:
                 log_line = "Snapshotting "
 
@@ -350,12 +369,9 @@ async def main(options: argparse.Namespace) -> None:
         end_time = timer()
         if count > 0:
             log_line += ",".join(sorted(messages))
-            log_line += ".. completed in %.2fs, spent %.2fs predicting" % (
-                (end_time - start_time),
-                prediction_time,
-            )
+            log_line += f".. completed in {end_time - start_time:.2f}s, spent {prediction_time:.2f}s predicting"
             if notify_time > 0:
-                log_line += ", %.2fs notifying" % (notify_time)
+                log_line += f", {notify_time:.2f}s notifying"
         if len(log_line) > 0:
             log.info(log_line)
         if prediction_time < 0.1:

@@ -48,35 +48,31 @@
 # Users Notice.
 #
 
-from __future__ import print_function
+
+import os
+import sys
 
 import numpy as np
-import tensorrt as trt
-import pycuda.driver as cuda
-import pycuda.autoinit
+import pycuda.autoinit  # noqa: F401 - initializes the CUDA context for PyCUDA/TensorRT helpers
+from data_processing import ALL_CATEGORIES, PostprocessYOLO, PreprocessYOLO
 from PIL import ImageDraw
-
 from yolov3_to_onnx import download_file
-from data_processing import PreprocessYOLO, PostprocessYOLO, ALL_CATEGORIES
 
-import sys, os
+import tensorrt as trt
+
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
 import common
 
 TRT_LOGGER = trt.Logger()
 
-def draw_bboxes(image_raw, bboxes, confidences, categories, all_categories, bbox_color='blue'):
+
+def draw_bboxes(image_raw, bboxes, confidences, categories, all_categories, bbox_color="blue"):
     """Draw the bounding boxes on the original input image and return it.
 
-    Keyword arguments:
-    image_raw -- a raw PIL Image
-    bboxes -- NumPy array containing the bounding box coordinates of N objects, with shape (N,4).
-    categories -- NumPy array containing the corresponding category for each object,
-    with shape (N,)
-    confidences -- NumPy array containing the corresponding confidence for each object,
-    with shape (N,)
-    all_categories -- a list of all categories in the correct ordered (required for looking up
-    the category name)
+    Keyword Arguments: image_raw -- a raw PIL Image bboxes -- NumPy array containing the bounding box coordinates of N
+    objects, with shape (N,4). categories -- NumPy array containing the corresponding category for each object, with
+    shape (N,) confidences -- NumPy array containing the corresponding confidence for each object, with shape (N,)
+    all_categories -- a list of all categories in the correct ordered (required for looking up the category name)
     bbox_color -- an optional string specifying the color of the bounding boxes (default: 'blue')
     """
     draw = ImageDraw.Draw(image_raw)
@@ -89,33 +85,37 @@ def draw_bboxes(image_raw, bboxes, confidences, categories, all_categories, bbox
         bottom = min(image_raw.height, np.floor(y_coord + height + 0.5).astype(int))
 
         draw.rectangle(((left, top), (right, bottom)), outline=bbox_color)
-        draw.text((left, top - 12), '{0} {1:.2f}'.format(all_categories[category], score), fill=bbox_color)
+        draw.text((left, top - 12), f"{all_categories[category]} {score:.2f}", fill=bbox_color)
 
     return image_raw
 
+
 def get_engine(onnx_file_path, engine_file_path=""):
     """Attempts to load a serialized engine if available, otherwise builds a new TensorRT engine and saves it."""
+
     def build_engine():
-        """Takes an ONNX file and creates a TensorRT engine to run inference with"""
-        with trt.Builder(TRT_LOGGER) as builder, builder.create_network(common.EXPLICIT_BATCH) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
-            builder.max_workspace_size = 1 << 28 # 256MiB
+        """Takes an ONNX file and creates a TensorRT engine to run inference with."""
+        with trt.Builder(TRT_LOGGER) as builder, builder.create_network(
+            common.EXPLICIT_BATCH
+        ) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
+            builder.max_workspace_size = 1 << 28  # 256MiB
             builder.max_batch_size = 1
             # Parse model file
             if not os.path.exists(onnx_file_path):
-                print('ONNX file {} not found, please run yolov3_to_onnx.py first to generate it.'.format(onnx_file_path))
+                print(f"ONNX file {onnx_file_path} not found, please run yolov3_to_onnx.py first to generate it.")
                 exit(0)
-            print('Loading ONNX file from path {}...'.format(onnx_file_path))
-            with open(onnx_file_path, 'rb') as model:
-                print('Beginning ONNX file parsing')
+            print(f"Loading ONNX file from path {onnx_file_path}...")
+            with open(onnx_file_path, "rb") as model:
+                print("Beginning ONNX file parsing")
                 if not parser.parse(model.read()):
-                    print ('ERROR: Failed to parse the ONNX file.')
+                    print("ERROR: Failed to parse the ONNX file.")
                     for error in range(parser.num_errors):
-                        print (parser.get_error(error))
+                        print(parser.get_error(error))
                     return None
             # The actual yolov3.onnx is generated with batch size 64. Reshape input to batch size 1
             network.get_input(0).shape = [1, 3, 608, 608]
-            print('Completed parsing of ONNX file')
-            print('Building an engine from file {}; this may take a while...'.format(onnx_file_path))
+            print("Completed parsing of ONNX file")
+            print(f"Building an engine from file {onnx_file_path}; this may take a while...")
             engine = builder.build_cuda_engine(network)
             print("Completed creating Engine")
             with open(engine_file_path, "wb") as f:
@@ -124,21 +124,24 @@ def get_engine(onnx_file_path, engine_file_path=""):
 
     if os.path.exists(engine_file_path):
         # If a serialized engine exists, use it instead of building an engine.
-        print("Reading engine from file {}".format(engine_file_path))
+        print(f"Reading engine from file {engine_file_path}")
         with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
             return runtime.deserialize_cuda_engine(f.read())
     else:
         return build_engine()
 
+
 def main():
     """Create a TensorRT engine for ONNX-based YOLOv3-608 and run inference."""
-
     # Try to load a previously generated YOLOv3-608 network graph in ONNX format:
-    onnx_file_path = '../simplescan/model32.onnx'
+    onnx_file_path = "../simplescan/model32.onnx"
     engine_file_path = "model32.trt"
     # Download a dog image and save it to the following file path:
-    input_image_path = download_file('dog.jpg',
-        'https://github.com/pjreddie/darknet/raw/f86901f6177dfc6116360a13cc06ab680e0c86b0/data/dog.jpg', checksum_reference=None)
+    input_image_path = download_file(
+        "dog.jpg",
+        "https://github.com/pjreddie/darknet/raw/f86901f6177dfc6116360a13cc06ab680e0c86b0/data/dog.jpg",
+        checksum_reference=None,
+    )
 
     # Two-dimensional tuple with the target network's (spatial) input resolution in HW ordered
     input_resolution_yolov3_HW = (608, 608)
@@ -156,7 +159,7 @@ def main():
     with get_engine(onnx_file_path, engine_file_path) as engine, engine.create_execution_context() as context:
         inputs, outputs, bindings, stream = common.allocate_buffers(engine)
         # Do inference
-        print('Running inference on image {}...'.format(input_image_path))
+        print(f"Running inference on image {input_image_path}...")
         # Set host input to the image. The common.do_inference function will copy the input to the GPU before executing.
         inputs[0].host = image
         trt_outputs = common.do_inference_v2(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
@@ -164,12 +167,23 @@ def main():
     # Before doing post-processing, we need to reshape the outputs as the common.do_inference will give us flat arrays.
     trt_outputs = [output.reshape(shape) for output, shape in zip(trt_outputs, output_shapes)]
 
-    postprocessor_args = {"yolo_masks": [(6, 7, 8), (3, 4, 5), (0, 1, 2)],                    # A list of 3 three-dimensional tuples for the YOLO masks
-                          "yolo_anchors": [(10, 13), (16, 30), (33, 23), (30, 61), (62, 45),  # A list of 9 two-dimensional tuples for the YOLO anchors
-                                           (59, 119), (116, 90), (156, 198), (373, 326)],
-                          "obj_threshold": 0.6,                                               # Threshold for object coverage, float value between 0 and 1
-                          "nms_threshold": 0.5,                                               # Threshold for non-max suppression algorithm, float value between 0 and 1
-                          "yolo_input_resolution": input_resolution_yolov3_HW}
+    postprocessor_args = {
+        "yolo_masks": [(6, 7, 8), (3, 4, 5), (0, 1, 2)],  # A list of 3 three-dimensional tuples for the YOLO masks
+        "yolo_anchors": [
+            (10, 13),
+            (16, 30),
+            (33, 23),
+            (30, 61),
+            (62, 45),  # A list of 9 two-dimensional tuples for the YOLO anchors
+            (59, 119),
+            (116, 90),
+            (156, 198),
+            (373, 326),
+        ],
+        "obj_threshold": 0.6,  # Threshold for object coverage, float value between 0 and 1
+        "nms_threshold": 0.5,  # Threshold for non-max suppression algorithm, float value between 0 and 1
+        "yolo_input_resolution": input_resolution_yolov3_HW,
+    }
 
     postprocessor = PostprocessYOLO(**postprocessor_args)
 
@@ -177,9 +191,10 @@ def main():
     boxes, classes, scores = postprocessor.process(trt_outputs, (shape_orig_WH))
     # Draw the bounding boxes onto the original input image and save it as a PNG file
     obj_detected_img = draw_bboxes(image_raw, boxes, scores, classes, ALL_CATEGORIES)
-    output_image_path = 'dog_bboxes.png'
-    obj_detected_img.save(output_image_path, 'PNG')
-    print('Saved image with bounding boxes of detected objects to {}.'.format(output_image_path))
+    output_image_path = "dog_bboxes.png"
+    obj_detected_img.save(output_image_path, "PNG")
+    print(f"Saved image with bounding boxes of detected objects to {output_image_path}.")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

@@ -9,9 +9,9 @@ from timeit import default_timer as timer
 
 import cv2
 import humanize
+from notify import notify
 from PIL import Image
 
-from notify import notify
 from utils import bb_intersection_over_union, draw_bbox, draw_road
 
 logger = logging.getLogger(__name__)
@@ -30,9 +30,9 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     threshold = config["detector"].getfloat("threshold")
     image = cam.image
     if image is None:
-        return 0, 0, "{}=[err={}]".format(cam.name, cam.error)
+        return 0, 0, f"{cam.name}=[err={cam.error}]"
     if cam.resized is None:
-        return 0, 0, "{}=[err=resized is None]".format(cam.name)
+        return 0, 0, f"{cam.name}=[err=resized is None]"
     prediction_start = timer()
     try:
         if len(cam.resized.shape) == 3:
@@ -42,9 +42,9 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             predictions = grey_model.predict_image(cam.resized)
             model_name = "grey"
         else:
-            return 0, 0, "Unknown image shape {}".format(cam.resized.shape)
+            return 0, 0, f"Unknown image shape {cam.resized.shape}"
     except OSError:
-        return 0, 0, "{}=error:{}".format(cam.name, sys.exc_info()[0])
+        return 0, 0, f"{cam.name}=error:{sys.exc_info()[0]}"
     cam.age = cam.age + 1
     vehicle_predictions = []
     if cam.vehicle_check and vehicle_model is not None:
@@ -58,9 +58,10 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     # filter out lower predictions
     predictions = list(
         filter(
-            lambda p: p["probability"]
-            > config["thresholds"].getfloat(p["tagName"], threshold)
-            or (p["tagName"] in cam.objects and p["probability"] > 0.4),
+            lambda p: (
+                p["probability"] > config["thresholds"].getfloat(p["tagName"], threshold)
+                or (p["tagName"] in cam.objects and p["probability"] > 0.4)
+            ),
             predictions,
         )
     )
@@ -97,9 +98,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
                 and p["boundingBox"]["left"] > 0.8
             ):
                 p["ignore"] = "neighbor"
-            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24 and (
-                p["tagName"] in ["vehicle", "person"]
-            ):
+            if p["boundingBox"]["top"] + p["boundingBox"]["height"] < 0.24 and (p["tagName"] in ["vehicle", "person"]):
                 p["ignore"] = "road"
                 if p["tagName"] == "person":
                     p["tagName"] = "person_road"
@@ -120,10 +119,10 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             for i, e in enumerate(cam.excludes[p["tagName"]]):
                 iou = bb_intersection_over_union(e, p["boundingBox"])
                 if iou > 0.5:
-                    p["ignore"] = e.get("comment", "static iou {}".format(iou))
+                    p["ignore"] = e.get("comment", f"static iou {iou}")
                     break
 
-    valid_predictions = list(filter(lambda p: not ("ignore" in p), predictions))
+    valid_predictions = list(filter(lambda p: "ignore" not in p, predictions))
     valid_objects = set(p["tagName"] for p in valid_predictions)
     departed_objects = cam.objects - valid_objects
 
@@ -216,14 +215,8 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     notify_expired = []
     for e in expired:
         draw_bbox(im_pil, e, "grey", width=4)
-        t = (
-            humanize.naturaltime(datetime.now() - e["start_time"])
-            .replace(" ago", "")
-            .replace("a minute", "minute")
-        )
-        e[
-            "msg"
-        ] = f"{e['tagName']} departed from {cam.name} after being seen {e['age']} times over the past {t}"
+        t = humanize.naturaltime(datetime.now() - e["start_time"]).replace(" ago", "").replace("a minute", "minute")
+        e["msg"] = f"{e['tagName']} departed from {cam.name} after being seen {e['age']} times over the past {t}"
         e["departed"] = True
         logger.info(e["msg"])
         if datetime.now() - e["start_time"] > timedelta(minutes=2) and e["age"] > 4:
@@ -275,18 +268,20 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
 
     if len(new_objects):
         if cam.name in ["driveway", "garage"]:
-            message = "%s in %s" % (",".join(valid_objects), cam.name)
+            message = "{} in {}".format(",".join(valid_objects), cam.name)
         elif cam.name == "shed":
-            message = "%s in front of garage" % ",".join(valid_objects)
+            message = "{} in front of garage".format(",".join(valid_objects))
         elif cam.name == "garage-r":
-            message = "%s in front of left garage" % ",".join(valid_objects)
+            message = "{} in front of left garage".format(",".join(valid_objects))
         elif cam.name == "garage-l":
-            message = "%s in front of right garage" % ",".join(valid_objects)
+            message = "{} in front of right garage".format(",".join(valid_objects))
         else:
-            message = "%s near %s" % (",".join(valid_objects), cam.name)
+            message = "{} near {}".format(",".join(valid_objects), cam.name)
         if cam.age > 2 or "once" in config["detector"]:
             notify_start = timer()
-            priority = notify(cam, message, im_pil, valid_predictions, config, ha, model_name=model_name, original_image=image)
+            priority = notify(
+                cam, message, im_pil, valid_predictions, config, ha, model_name=model_name, original_image=image
+            )
             notify_time += timer() - notify_start
         else:
             logger.info("Skipping notifications until after warm up")
@@ -297,7 +292,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
         priority = -4
 
     # Notify may also mark objects as ignore
-    valid_predictions = list(filter(lambda p: not ("ignore" in p), predictions))
+    valid_predictions = list(filter(lambda p: "ignore" not in p, predictions))
     cam.objects = set(p["tagName"] for p in valid_predictions)
 
     if priority > -3 and not cam.is_file and min_age < 2:
@@ -324,11 +319,7 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
             os.utime(priorname, (utime, utime))
         basename = os.path.join(
             save_dir,
-            datetime.now().strftime("%H%M%S")
-            + "-"
-            + cam.name.replace(" ", "_")
-            + "-"
-            + "_".join(valid_objects),
+            datetime.now().strftime("%H%M%S") + "-" + cam.name.replace(" ", "_") + "-" + "_".join(valid_objects),
         )
         if isinstance(image, Image.Image):
             image.save(basename + ".jpg")
@@ -364,7 +355,5 @@ def detect(cam, color_model, grey_model, vehicle_model, config, ha):
     return (
         prediction_time,
         notify_time,
-        "{}=[".format(cam.name)
-        + ",".join(format_prediction(p) for p in predictions)
-        + "]",
+        f"{cam.name}=[" + ",".join(format_prediction(p) for p in predictions) + "]",
     )

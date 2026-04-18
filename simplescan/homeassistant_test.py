@@ -3,9 +3,7 @@ import configparser
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from homeassistant import HomeAssistant
-
 
 config = configparser.ConfigParser()
 config.read("config-test.txt")
@@ -33,8 +31,7 @@ class MockHAAPI:
             resp.json.return_value = {"message": "API running."}
         elif url.endswith("/api/states"):
             resp.json.return_value = [
-                {"entity_id": k, "attributes": {"friendly_name": k}, "state": v}
-                for k, v in self.states.items()
+                {"entity_id": k, "attributes": {"friendly_name": k}, "state": v} for k, v in self.states.items()
             ]
         elif "/api/states/" in url:
             entity = url.split("/api/states/")[-1]
@@ -121,9 +118,7 @@ def main():
         print(f"Mode: {ha.mode()}")
         print(f"Is Dark: {ha.is_dark()}")
         print(f"Vacation Mode: {ha.vacation_mode()}")
-        print(
-            f"Time between midnight and 6AM: {ha.is_time_after_midnight_and_before_six()}"
-        )
+        print(f"Time between midnight and 6AM: {ha.is_time_after_midnight_and_before_six()}")
 
 
 if __name__ == "__main__":
